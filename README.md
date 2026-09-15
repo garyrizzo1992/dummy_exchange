@@ -26,7 +26,7 @@ PostgreSQL is authoritative for users, accounts, orders, fills, audit data, and 
 
 ## Local development
 
-Requirements: Rust stable, PostgreSQL 16+ (with `uuid-ossp`), `psql`; Redis is optional for this vertical slice. Create a database, copy `.env.example` to `.env`, and set its `DATABASE_URL`. The processes load the repository `.env` automatically.
+Requirements: Rust stable and PostgreSQL 16+; Redis is optional for this vertical slice. Create a database, copy `.env.example` to `.env`, and set its `DATABASE_URL`. The processes load the repository `.env` automatically.
 
 ```powershell
 Copy-Item .env.example .env

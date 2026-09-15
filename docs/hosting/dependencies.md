@@ -2,7 +2,7 @@
 
 ## PostgreSQL (required)
 
-PostgreSQL is the source of truth. It must be durable, backed up, monitored, and available to both API and worker processes. Required features are standard PostgreSQL plus the `uuid-ossp` extension used by the initial migration.
+PostgreSQL is the source of truth. It must be durable, backed up, monitored, and available to both API and worker processes. PostgreSQL 16+ is required; UUID defaults use native `gen_random_uuid()` and require no extension.
 
 - Create a dedicated database and least-privilege runtime role.
 - Apply `migrations/` once per release, before rolling out application versions that depend on them.
