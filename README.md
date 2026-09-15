@@ -50,7 +50,20 @@ Start the full local stack with Docker Compose:
 docker compose up --build
 ```
 
-The API is available at `http://localhost:3000`; Prometheus at `http://localhost:9090`; Grafana at `http://localhost:3001` (local `admin` / `admin`); PostgreSQL and Redis are published on `5432` and `6379` respectively. The Compose credentials and JWT secret are for local development only. See the [monitoring guide](monitoring/README.md) for scraped targets, dashboard, and alerts. Scale matching workers without naming individual containers:
+The following host endpoints are available after the stack starts:
+
+| Component | URL / connection | Notes |
+|---|---|---|
+| Exchange API | http://localhost:3000 | Public REST API. |
+| API health | http://localhost:3000/healthz | Process liveness. |
+| API readiness | http://localhost:3000/readyz | Verifies PostgreSQL connectivity. |
+| API metrics | http://localhost:3000/metrics | Prometheus exposition endpoint. |
+| Prometheus | http://localhost:9090 | Targets, queries, and alert-rule state. |
+| Grafana | http://localhost:3001 | Local login: `admin` / `admin`. |
+| PostgreSQL | `postgresql://postgres:password@localhost:5432/dummy_exchange` | Local development database only. |
+| Redis | `redis://localhost:6379/0` | Optional cache/pub-sub dependency. |
+
+The matching workers, simulator, and exporter metrics endpoints remain internal to the Compose network. The Compose credentials and JWT secret are for local development only. See the [monitoring guide](monitoring/README.md) for scraped targets, dashboard, and alerts. Scale matching workers without naming individual containers:
 
 ```powershell
 docker compose up --scale worker=3
