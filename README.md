@@ -42,6 +42,20 @@ make run-simulator
 
 Windows users without `make` can run `cargo run -p exchange-api`, `cargo run -p exchange-worker`, `cargo run -p exchange-simulator`, and `sqlx migrate run --source migrations` directly.
 
+### Local containers
+
+Start the full local stack with Docker Compose:
+
+```powershell
+docker compose up --build
+```
+
+The API is available at `http://localhost:3000`; PostgreSQL and Redis are published on `5432` and `6379` respectively. The Compose credentials and JWT secret are for local development only. Scale matching workers without naming individual containers:
+
+```powershell
+docker compose up --scale worker=3
+```
+
 ### API examples
 
 ```bash

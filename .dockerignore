@@ -1,0 +1,7 @@
+.git
+.env
+target
+**/target
+*.local
+postgres_data
+redis_data

@@ -1,4 +1,4 @@
-FROM rust:1.98.1-bookworm AS builder
+FROM rust:1.98.1-bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ COPY migrations ./migrations
 
 RUN cargo build --release --locked -p exchange-api
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates \

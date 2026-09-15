@@ -1,1 +1,1 @@
-FROM postgres:16-bookworm
+FROM postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af
