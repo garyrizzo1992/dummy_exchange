@@ -19,6 +19,16 @@ cargo run -p exchange-api
 - **Scaling:** stateless and safe to replicate. Ensure PostgreSQL connection capacity matches replica count.
 - **Shutdown:** allow a short graceful shutdown period for in-flight HTTP requests.
 
+## Container build
+
+Build from the repository root so Cargo can see the full workspace:
+
+```powershell
+docker build -f crates/api/Dockerfile -t exchange-api .
+```
+
+The image listens on port `3000`; supply `DATABASE_URL` and `JWT_SECRET` at runtime. Do not bake `.env` files or secrets into the image.
+
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
