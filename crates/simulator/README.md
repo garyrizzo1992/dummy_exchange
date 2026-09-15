@@ -22,6 +22,7 @@ cargo run -p exchange-simulator
 |---|---:|---|---|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string. |
 | `SIMULATION_SEED` | No | `42` | Integer seed for reproducible price movement on a clean state. |
+| `SIMULATOR_METRICS_BIND` | No | `0.0.0.0:3002` | Private listener exposing `/metrics` and `/healthz`. |
 | `RUST_LOG` | No | Rust default | JSON log filter. |
 
 The binary loads root `.env` for local development.

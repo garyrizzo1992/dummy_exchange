@@ -1,5 +1,8 @@
+use axum::{Router, extract::State, routing::get};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sqlx::{PgPool, Row};
 use std::env;
 use tokio::time::{Duration, sleep};
@@ -10,6 +13,13 @@ use uuid::Uuid;
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt().json().init();
+    let metrics = PrometheusBuilder::new().install_recorder()?;
+    let metrics_bind = env::var("SIMULATOR_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:3002".into());
+    tokio::spawn(async move {
+        if let Err(error) = serve_metrics(metrics, metrics_bind).await {
+            warn!(%error, "simulator metrics server stopped");
+        }
+    });
     let db = PgPool::connect(&env::var("DATABASE_URL")?).await?;
     let mut rng = StdRng::seed_from_u64(
         env::var("SIMULATION_SEED")
@@ -20,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
     bootstrap_market_maker(&db).await?;
     loop {
         if let Err(error) = tick(&db, &mut rng).await {
+            metrics::counter!("market_simulator_errors_total").increment(1);
             warn!(%error, "simulation tick failed");
         }
         sleep(Duration::from_secs(1)).await;
@@ -52,6 +63,10 @@ async fn tick(db: &PgPool, rng: &mut StdRng) -> anyhow::Result<()> {
         let next = (old * (Decimal::ONE + shock))
             .round_dp(2)
             .max(Decimal::new(1, 2));
+        metrics::counter!("market_simulator_updates_total", "instrument" => symbol.clone())
+            .increment(1);
+        metrics::gauge!("market_reference_price", "instrument" => symbol.clone())
+            .set(next.to_f64().unwrap_or_default());
         let mut tx = db.begin().await?;
         sqlx::query("UPDATE market_state SET reference_price=$1,change_24h=(($1-reference_price)/reference_price)*100,updated_at=now() WHERE instrument=$2").bind(next).bind(&symbol).execute(&mut *tx).await?;
         // Replace only stale simulator liquidity. User orders are never touched.
@@ -77,4 +92,16 @@ async fn tick(db: &PgPool, rng: &mut StdRng) -> anyhow::Result<()> {
         info!(instrument=%symbol,price=%next,"market updated");
     }
     Ok(())
+}
+async fn serve_metrics(handle: PrometheusHandle, bind: String) -> anyhow::Result<()> {
+    let app = Router::new()
+        .route("/metrics", get(render_metrics))
+        .route("/healthz", get(|| async { "ok" }))
+        .with_state(handle);
+    let listener = tokio::net::TcpListener::bind(bind).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+async fn render_metrics(State(handle): State<PrometheusHandle>) -> String {
+    handle.render()
 }

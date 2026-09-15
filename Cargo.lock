@@ -494,8 +494,11 @@ name = "exchange-simulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "dotenvy",
+ "metrics",
+ "metrics-exporter-prometheus",
  "rand 0.9.5",
  "rust_decimal",
  "serde_json",
@@ -511,9 +514,12 @@ name = "exchange-worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "dotenvy",
  "exchange-domain",
+ "metrics",
+ "metrics-exporter-prometheus",
  "rand 0.9.5",
  "rust_decimal",
  "serde_json",

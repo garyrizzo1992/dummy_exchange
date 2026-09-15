@@ -2,16 +2,17 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    middleware,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use exchange_domain::{NewOrder, OrderType, Side};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use metrics_exporter_prometheus::PrometheusBuilder;
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
-use std::{env, sync::Arc};
+use std::{env, sync::Arc, time::Instant};
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
@@ -22,7 +23,7 @@ use uuid::Uuid;
 struct App {
     db: PgPool,
     jwt: Arc<String>,
-    metrics: Arc<String>,
+    metrics: PrometheusHandle,
 }
 #[derive(Deserialize)]
 struct Credentials {
@@ -56,14 +57,14 @@ async fn main() -> anyhow::Result<()> {
         .init();
     let db = PgPool::connect(&env::var("DATABASE_URL")?).await?;
     sqlx::migrate!("../../migrations").run(&db).await?;
-    let metrics = PrometheusBuilder::new().install_recorder()?.render();
+    let metrics = PrometheusBuilder::new().install_recorder()?;
     let app = App {
         db,
         jwt: Arc::new(
             env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "development-secret-change-me-32bytes".into()),
         ),
-        metrics: Arc::new(metrics),
+        metrics,
     };
     let router = Router::new()
         .route("/healthz", get(|| async { "ok" }))
@@ -80,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/markets/{symbol}/ticker", get(ticker))
         .route("/v1/markets/{symbol}/book", get(order_book))
         .with_state(app)
+        .layer(middleware::from_fn(track_request_metrics))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(TraceLayer::new_for_http());
@@ -96,7 +98,21 @@ async fn ready(State(a): State<App>) -> impl IntoResponse {
     }
 }
 async fn metric(State(a): State<App>) -> String {
-    (*a.metrics).clone()
+    a.metrics.render()
+}
+async fn track_request_metrics(
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> Response {
+    let started = Instant::now();
+    let method = request.method().to_string();
+    let response = next.run(request).await;
+    let status = response.status().as_u16().to_string();
+    metrics::counter!("http_requests_total", "method" => method.clone(), "status" => status)
+        .increment(1);
+    metrics::histogram!("http_request_duration_seconds", "method" => method)
+        .record(started.elapsed().as_secs_f64());
+    response
 }
 fn hash(p: &str) -> String {
     format!("{:x}", Sha256::digest(p.as_bytes()))

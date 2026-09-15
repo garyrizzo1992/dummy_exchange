@@ -50,7 +50,7 @@ Start the full local stack with Docker Compose:
 docker compose up --build
 ```
 
-The API is available at `http://localhost:3000`; PostgreSQL and Redis are published on `5432` and `6379` respectively. The Compose credentials and JWT secret are for local development only. Scale matching workers without naming individual containers:
+The API is available at `http://localhost:3000`; Prometheus at `http://localhost:9090`; Grafana at `http://localhost:3001` (local `admin` / `admin`); PostgreSQL and Redis are published on `5432` and `6379` respectively. The Compose credentials and JWT secret are for local development only. See the [monitoring guide](monitoring/README.md) for scraped targets, dashboard, and alerts. Scale matching workers without naming individual containers:
 
 ```powershell
 docker compose up --scale worker=3

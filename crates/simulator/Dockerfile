@@ -19,4 +19,6 @@ COPY --from=builder /app/target/release/exchange-simulator /usr/local/bin/exchan
 USER exchange
 WORKDIR /home/exchange
 
+EXPOSE 3002
+
 ENTRYPOINT ["/usr/local/bin/exchange-simulator"]

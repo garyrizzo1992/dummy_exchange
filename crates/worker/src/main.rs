@@ -1,4 +1,6 @@
+use axum::{Router, extract::State, routing::get};
 use exchange_domain::{BookOrder, Side, match_taker};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
 use std::env;
@@ -10,22 +12,32 @@ use uuid::Uuid;
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt().json().init();
+    let metrics = PrometheusBuilder::new().install_recorder()?;
+    let metrics_bind = env::var("WORKER_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:3001".into());
+    tokio::spawn(async move {
+        if let Err(error) = serve_metrics(metrics, metrics_bind).await {
+            warn!(%error, "worker metrics server stopped");
+        }
+    });
     let db = PgPool::connect(&env::var("DATABASE_URL")?).await?;
     let worker = env::var("WORKER_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
     loop {
         if let Err(error) = tick(&db, &worker).await {
+            metrics::counter!("matching_worker_errors_total").increment(1);
             warn!(%error,"worker tick failed")
         };
         sleep(Duration::from_millis(100)).await;
     }
 }
 async fn tick(db: &PgPool, worker: &str) -> anyhow::Result<()> {
+    metrics::counter!("matching_worker_ticks_total").increment(1);
     let instruments = sqlx::query("SELECT instrument FROM market_state ORDER BY instrument")
         .fetch_all(db)
         .await?;
     for row in instruments {
         let instrument: String = row.get("instrument");
         if let Err(error) = tick_instrument(db, worker, &instrument).await {
+            metrics::counter!("matching_instrument_errors_total", "instrument" => instrument.clone()).increment(1);
             warn!(%error,%instrument,"instrument matching failed")
         };
     }
@@ -62,7 +74,7 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
             sells.push(order)
         }
     }
-    let mut fills = 0;
+    let mut fills = 0_u64;
     for mut buy in buys {
         for fill in match_taker(&mut buy, &mut sells) {
             let inserted=sqlx::query("INSERT INTO fills(maker_order_id,taker_order_id,instrument,price,quantity) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id").bind(fill.maker_id).bind(fill.taker_id).bind(instrument).bind(fill.price).bind(fill.quantity).fetch_optional(&mut *tx).await?;
@@ -81,9 +93,23 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
     }
     tx.commit().await?;
     if fills > 0 {
+        metrics::counter!("matching_fills_total", "instrument" => instrument.to_owned())
+            .increment(fills);
         info!(%worker,%instrument,fills,"orders matched")
     };
     Ok(())
+}
+async fn serve_metrics(handle: PrometheusHandle, bind: String) -> anyhow::Result<()> {
+    let app = Router::new()
+        .route("/metrics", get(render_metrics))
+        .route("/healthz", get(|| async { "ok" }))
+        .with_state(handle);
+    let listener = tokio::net::TcpListener::bind(bind).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+async fn render_metrics(State(handle): State<PrometheusHandle>) -> String {
+    handle.render()
 }
 async fn apply_fill(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,

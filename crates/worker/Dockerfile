@@ -19,4 +19,6 @@ COPY --from=builder /app/target/release/exchange-worker /usr/local/bin/exchange-
 USER exchange
 WORKDIR /home/exchange
 
+EXPOSE 3001
+
 ENTRYPOINT ["/usr/local/bin/exchange-worker"]

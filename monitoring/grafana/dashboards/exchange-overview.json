@@ -1,0 +1,21 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {"type":"stat","title":"API availability","targets":[{"expr":"min(up{job=\"exchange-api\"})"}],"fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},"gridPos":{"h":7,"w":6,"x":0,"y":0}},
+    {"type":"stat","title":"API requests / second","targets":[{"expr":"sum(rate(http_requests_total[5m]))"}],"gridPos":{"h":7,"w":6,"x":6,"y":0}},
+    {"type":"stat","title":"Orders accepted / second","targets":[{"expr":"sum(rate(orders_accepted_total[5m]))"}],"gridPos":{"h":7,"w":6,"x":12,"y":0}},
+    {"type":"stat","title":"Fills / second","targets":[{"expr":"sum(rate(matching_fills_total[5m]))"}],"gridPos":{"h":7,"w":6,"x":18,"y":0}},
+    {"type":"timeseries","title":"API request latency (p95)","targets":[{"expr":"http_request_duration_seconds{quantile=\"0.95\"}","legendFormat":"p95"}],"gridPos":{"h":8,"w":12,"x":0,"y":7}},
+    {"type":"timeseries","title":"Market reference prices","targets":[{"expr":"market_reference_price","legendFormat":"{{instrument}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":7}},
+    {"type":"timeseries","title":"API status codes","targets":[{"expr":"sum by (status) (rate(http_requests_total[5m]))","legendFormat":"{{status}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":15}},
+    {"type":"timeseries","title":"Database and Redis availability","targets":[{"expr":"pg_up","legendFormat":"postgres"},{"expr":"redis_up","legendFormat":"redis"}],"gridPos":{"h":8,"w":12,"x":12,"y":15}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["exchange", "sre"],
+  "templating": {"list": []},
+  "time": {"from":"now-1h","to":"now"},
+  "title": "Exchange Overview",
+  "uid": "exchange-overview",
+  "version": 1
+}

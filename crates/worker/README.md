@@ -22,6 +22,7 @@ cargo run -p exchange-worker
 |---|---:|---|---|
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string. |
 | `WORKER_ID` | Recommended | Generated UUID | Process identifier included in logs. |
+| `WORKER_METRICS_BIND` | No | `0.0.0.0:3001` | Private listener exposing `/metrics` and `/healthz`. |
 | `RUST_LOG` | No | Rust default | JSON log filter. |
 
 The binary loads root `.env` for local development.

@@ -1,0 +1,34 @@
+groups:
+  - name: exchange-availability
+    rules:
+      - alert: ExchangeApiUnavailable
+        expr: up{job="exchange-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Exchange API scrape target is unavailable
+
+      - alert: PostgreSQLUnavailable
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: PostgreSQL exporter cannot connect to the exchange database
+
+      - alert: RedisUnavailable
+        expr: redis_up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Redis exporter cannot reach Redis
+
+      - alert: ElevatedApiErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 percent of API requests are failing with 5xx responses
