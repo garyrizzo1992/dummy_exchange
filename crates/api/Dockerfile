@@ -1,8 +1,7 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.98.1-bookworm AS builder
 
 WORKDIR /app
 
-# The Docker build context must be the repository root because this is a Cargo workspace.
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY migrations ./migrations
