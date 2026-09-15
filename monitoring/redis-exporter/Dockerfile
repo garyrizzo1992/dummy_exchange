@@ -1,0 +1,3 @@
+FROM oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+
+EXPOSE 9121
