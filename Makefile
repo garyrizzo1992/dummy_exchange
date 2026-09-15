@@ -1,4 +1,4 @@
-.PHONY: build test lint run-api run-worker migrate seed bench
+.PHONY: build test lint run-api run-worker run-simulator migrate seed bench
 build:
 	cargo build --workspace
 test:
@@ -9,6 +9,8 @@ run-api:
 	cargo run -p exchange-api
 run-worker:
 	cargo run -p exchange-worker
+run-simulator:
+	cargo run -p exchange-simulator
 migrate:
 	sqlx migrate run --source migrations
 seed:

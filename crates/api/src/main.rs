@@ -76,6 +76,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/orders", get(open_orders))
         .route("/v1/accounts/balances", get(balances))
         .route("/v1/fills", get(fills))
+        .route("/v1/instruments", get(instruments))
+        .route("/v1/markets/{symbol}/ticker", get(ticker))
+        .route("/v1/markets/{symbol}/book", get(order_book))
         .with_state(app)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
@@ -128,7 +131,7 @@ async fn register(
         .execute(&mut *tx)
         .await
         .map_err(|_| StatusCode::CONFLICT)?;
-    for cur in ["USD", "BTC"] {
+    for cur in ["USD", "BTC", "ETH", "SOL"] {
         sqlx::query("INSERT INTO accounts(user_id,currency,available) VALUES($1,$2,$3)")
             .bind(id)
             .bind(cur)
@@ -206,20 +209,42 @@ async fn place_order(
             ),
         ));
     }
-    let price = o
-        .limit_price
-        .unwrap_or(rust_decimal::Decimal::new(9_999_999_999, 0));
+    let state = sqlx::query("SELECT reference_price FROM market_state WHERE instrument=$1")
+        .bind(&o.instrument)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let reference: rust_decimal::Decimal = state.get("reference_price");
+    // A market order persists a protective execution price so matching can remain deterministic.
+    let price = o.limit_price.unwrap_or_else(|| {
+        if o.side == Side::Buy {
+            reference * rust_decimal::Decimal::new(105, 2)
+        } else {
+            rust_decimal::Decimal::ZERO
+        }
+    });
     let reserve = if o.side == Side::Buy {
         o.quantity * price
     } else {
         o.quantity
     };
-    let currency = if o.side == Side::Buy { "USD" } else { "BTC" };
+    let base = o
+        .instrument
+        .split('-')
+        .next()
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let quote = o
+        .instrument
+        .split('-')
+        .nth(1)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let currency = if o.side == Side::Buy { quote } else { base };
     let result=sqlx::query("UPDATE accounts SET available=available-$1,reserved=reserved+$1 WHERE user_id=$2 AND currency=$3 AND available >= $1").bind(reserve).bind(uid).bind(currency).execute(&mut *tx).await.map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
     if result.rows_affected() != 1 {
         return Err(StatusCode::UNPROCESSABLE_ENTITY);
     }
-    sqlx::query("INSERT INTO orders(id,user_id,client_order_id,instrument,side,order_type,quantity,remaining,limit_price,status) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,'open')").bind(id).bind(uid).bind(&o.client_order_id).bind(&o.instrument).bind(format!("{:?}",o.side).to_lowercase()).bind(format!("{:?}",o.order_type).to_lowercase()).bind(o.quantity).bind(o.limit_price).execute(&mut *tx).await.map_err(|_|StatusCode::BAD_REQUEST)?;
+    sqlx::query("INSERT INTO orders(id,user_id,client_order_id,instrument,side,order_type,quantity,remaining,limit_price,status) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,'open')").bind(id).bind(uid).bind(&o.client_order_id).bind(&o.instrument).bind(format!("{:?}",o.side).to_lowercase()).bind(format!("{:?}",o.order_type).to_lowercase()).bind(o.quantity).bind(price).execute(&mut *tx).await.map_err(|_|StatusCode::BAD_REQUEST)?;
     sqlx::query(
         "INSERT INTO outbox_events(kind,aggregate_id,payload) VALUES('order.accepted',$1,$2)",
     )
@@ -243,10 +268,34 @@ async fn cancel(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let u = user(&headers, &a)?;
-    let r=sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1 AND user_id=$2 AND status IN ('open','partially_filled')").bind(id).bind(u).execute(&a.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?;
-    if r.rows_affected() == 0 {
-        return Err(StatusCode::NOT_FOUND);
+    let mut tx =
+        a.db.begin()
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let order=sqlx::query("SELECT instrument,side,remaining,limit_price FROM orders WHERE id=$1 AND user_id=$2 AND status IN ('open','partially_filled') FOR UPDATE").bind(id).bind(u).fetch_optional(&mut *tx).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?.ok_or(StatusCode::NOT_FOUND)?;
+    let symbol: String = order.get("instrument");
+    let side: String = order.get("side");
+    let remaining: rust_decimal::Decimal = order.get("remaining");
+    let price: rust_decimal::Decimal = order.get("limit_price");
+    let currency = if side == "buy" {
+        symbol.split('-').nth(1).unwrap()
+    } else {
+        symbol.split('-').next().unwrap()
     };
+    let release = if side == "buy" {
+        remaining * price
+    } else {
+        remaining
+    };
+    sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    sqlx::query("UPDATE accounts SET available=available+$1,reserved=reserved-$1 WHERE user_id=$2 AND currency=$3").bind(release).bind(u).bind(currency).execute(&mut *tx).await.map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({"id":id,"status":"cancelled"})))
 }
 async fn open_orders(
@@ -280,4 +329,36 @@ async fn fills(
     let u = user(&headers, &a)?;
     let rows=sqlx::query("SELECT f.id,f.instrument,f.price,f.quantity,f.created_at FROM fills f JOIN orders o ON o.id IN (f.maker_order_id,f.taker_order_id) WHERE o.user_id=$1 ORDER BY f.created_at DESC").bind(u).fetch_all(&a.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?;
     Ok(Json(rows.into_iter().map(|r|serde_json::json!({"id":r.get::<Uuid,_>("id"),"instrument":r.get::<String,_>("instrument"),"price":r.get::<rust_decimal::Decimal,_>("price"),"quantity":r.get::<rust_decimal::Decimal,_>("quantity")})).collect()))
+}
+async fn instruments(State(a): State<App>) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    let rows=sqlx::query("SELECT i.symbol,i.base_currency,i.quote_currency,i.tick_size,s.reference_price,s.updated_at FROM instruments i JOIN market_state s ON s.instrument=i.symbol WHERE i.enabled ORDER BY i.symbol").fetch_all(&a.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(Json(rows.into_iter().map(|r|serde_json::json!({"symbol":r.get::<String,_>("symbol"),"base":r.get::<String,_>("base_currency"),"quote":r.get::<String,_>("quote_currency"),"tick_size":r.get::<rust_decimal::Decimal,_>("tick_size"),"reference_price":r.get::<rust_decimal::Decimal,_>("reference_price")})).collect()))
+}
+async fn ticker(
+    State(a): State<App>,
+    Path(symbol): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let row=sqlx::query("SELECT instrument,reference_price,change_24h,updated_at FROM market_state WHERE instrument=$1").bind(symbol).fetch_optional(&a.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?.ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(
+        serde_json::json!({"instrument":row.get::<String,_>("instrument"),"price":row.get::<rust_decimal::Decimal,_>("reference_price"),"change_24h":row.get::<rust_decimal::Decimal,_>("change_24h"),"updated_at":row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")}),
+    ))
+}
+async fn order_book(
+    State(a): State<App>,
+    Path(symbol): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let rows=sqlx::query("SELECT side,limit_price,SUM(remaining) AS quantity FROM orders WHERE instrument=$1 AND status IN ('open','partially_filled') GROUP BY side,limit_price ORDER BY side,limit_price").bind(&symbol).fetch_all(&a.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?;
+    let mut bids = Vec::new();
+    let mut asks = Vec::new();
+    for r in rows {
+        let level = serde_json::json!({"price":r.get::<rust_decimal::Decimal,_>("limit_price"),"quantity":r.get::<rust_decimal::Decimal,_>("quantity")});
+        if r.get::<String, _>("side") == "buy" {
+            bids.push(level)
+        } else {
+            asks.push(level)
+        }
+    }
+    Ok(Json(
+        serde_json::json!({"instrument":symbol,"bids":bids,"asks":asks}),
+    ))
 }

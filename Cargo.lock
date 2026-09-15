@@ -490,6 +490,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "exchange-simulator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dotenvy",
+ "rand 0.9.5",
+ "rust_decimal",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "exchange-worker"
 version = "0.1.0"
 dependencies = [

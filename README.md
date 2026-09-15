@@ -1,6 +1,6 @@
 # Dummy Exchange
 
-A production-style, simulated electronic exchange in Rust. It demonstrates a practical vertical slice: authenticated users receive simulated accounts, place idempotent orders, reserve funds atomically, and receive durable fills produced by independently runnable matching workers.
+A production-style, simulated electronic exchange in Rust. Authenticated users receive simulated accounts, trade BTC/USD, ETH/USD, and SOL/USD against deterministic replenishing liquidity, and receive durable fills produced by independently runnable matching workers.
 
 ## Architecture
 
@@ -8,6 +8,7 @@ A production-style, simulated electronic exchange in Rust. It demonstrates a pra
 flowchart LR
   Client -->|REST + JWT| API[Axum API]
   API -->|transaction| PG[(PostgreSQL)]
+  Simulator[Market simulator] -->|prices + liquidity| PG
   PG -->|outbox / open book| Worker[Matching workers]
   Worker -->|fills + quotes| PG
   API -->|metrics, health| Ops[Observability collector]
@@ -35,9 +36,11 @@ make seed
 make run-api
 # another terminal
 make run-worker
+# third terminal
+make run-simulator
 ```
 
-Windows users without `make` can run `cargo run -p exchange-api`, `cargo run -p exchange-worker`, and `sqlx migrate run --source migrations` directly.
+Windows users without `make` can run `cargo run -p exchange-api`, `cargo run -p exchange-worker`, `cargo run -p exchange-simulator`, and `sqlx migrate run --source migrations` directly.
 
 ### API examples
 
@@ -45,6 +48,8 @@ Windows users without `make` can run `cargo run -p exchange-api`, `cargo run -p 
 curl -X POST http://127.0.0.1:3000/v1/auth/register -H 'content-type: application/json' -d '{"email":"demo@example.test","password":"not-a-real-password"}'
 curl -X POST http://127.0.0.1:3000/v1/orders -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"client_order_id":"demo-001","instrument":"BTC-USD","side":"buy","order_type":"limit","quantity":"0.01","limit_price":"64000"}'
 curl http://127.0.0.1:3000/v1/orders -H "authorization: Bearer $TOKEN"
+curl http://127.0.0.1:3000/v1/instruments
+curl http://127.0.0.1:3000/v1/markets/BTC-USD/book
 ```
 
 ## Application operations
@@ -78,4 +83,4 @@ Matching invariants are unit tested in the domain crate. The [failure-mode playb
 
 The deployment environment supplies PostgreSQL, optional Redis, secrets, network ingress, and telemetry collectors. Workers are launched independently with a unique `WORKER_ID` and scaled externally. No container, orchestration, infrastructure, CI/CD, or monitoring-stack artefacts are included by design.
 
-Container and platform implementers should use the detailed [API service](docs/hosting/api-service.md), [matching worker](docs/hosting/matching-worker.md), and [dependency](docs/hosting/dependencies.md) hosting contracts.
+Container and platform implementers should use the detailed [API service](docs/hosting/api-service.md), [matching worker](docs/hosting/matching-worker.md), [market simulator](docs/hosting/market-simulator.md), and [dependency](docs/hosting/dependencies.md) hosting contracts.
