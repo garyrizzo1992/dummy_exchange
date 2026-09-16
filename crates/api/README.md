@@ -55,4 +55,4 @@ The binary loads a root `.env` file for local development. Production should inj
 
 ## Operational notes
 
-`/healthz` is a process check. `/readyz` returns 503 when PostgreSQL cannot be reached. Logs are JSON and support `x-request-id`; `/metrics` uses Prometheus exposition format. Run migrations once as a release operation rather than independently on every API replica.
+`/healthz` is a process check. `/readyz` returns 503 when PostgreSQL cannot be reached. Logs are JSON and support `x-request-id`; `/metrics` uses Prometheus exposition format. It exposes HTTP request metrics plus accepted-order, cancelled-order, and submitted-notional metrics labelled only by `instrument`, `side`, and `order_type`. Run migrations once as a release operation rather than independently on every API replica.

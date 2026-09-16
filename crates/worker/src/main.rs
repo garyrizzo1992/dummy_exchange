@@ -2,6 +2,7 @@ use axum::{Router, extract::State, routing::get};
 use exchange_domain::{BookOrder, Side, match_taker};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sqlx::{PgPool, Row};
 use std::env;
 use tokio::time::{Duration, sleep};
@@ -75,11 +76,14 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
         }
     }
     let mut fills = 0_u64;
+    let mut user_buy_fills = 0_u64;
+    let mut user_sell_fills = 0_u64;
+    let mut fill_notionals = Vec::new();
     for mut buy in buys {
         for fill in match_taker(&mut buy, &mut sells) {
             let inserted=sqlx::query("INSERT INTO fills(maker_order_id,taker_order_id,instrument,price,quantity) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id").bind(fill.maker_id).bind(fill.taker_id).bind(instrument).bind(fill.price).bind(fill.quantity).fetch_optional(&mut *tx).await?;
             if inserted.is_some() {
-                apply_fill(
+                let (buy_is_system, sell_is_system) = apply_fill(
                     &mut tx,
                     fill.maker_id,
                     fill.taker_id,
@@ -88,6 +92,13 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
                 )
                 .await?;
                 fills += 1;
+                if !buy_is_system {
+                    user_buy_fills += 1;
+                }
+                if !sell_is_system {
+                    user_sell_fills += 1;
+                }
+                fill_notionals.push((fill.price * fill.quantity).to_f64().unwrap_or_default());
             }
         }
     }
@@ -95,6 +106,14 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
     if fills > 0 {
         metrics::counter!("matching_fills_total", "instrument" => instrument.to_owned())
             .increment(fills);
+        metrics::counter!("matching_user_buy_fills_total", "instrument" => instrument.to_owned())
+            .increment(user_buy_fills);
+        metrics::counter!("matching_user_sell_fills_total", "instrument" => instrument.to_owned())
+            .increment(user_sell_fills);
+        for notional in fill_notionals {
+            metrics::histogram!("matching_fill_notional_usd", "instrument" => instrument.to_owned())
+                .record(notional);
+        }
         info!(%worker,%instrument,fills,"orders matched")
     };
     Ok(())
@@ -117,7 +136,7 @@ async fn apply_fill(
     buy_id: Uuid,
     price: Decimal,
     quantity: Decimal,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<(bool, bool)> {
     let buy =
         sqlx::query("SELECT user_id,instrument,limit_price,is_system FROM orders WHERE id=$1")
             .bind(buy_id)
@@ -160,5 +179,5 @@ async fn apply_fill(
             .execute(&mut **tx)
             .await?;
     }
-    Ok(())
+    Ok((buy.get("is_system"), sell.get("is_system")))
 }

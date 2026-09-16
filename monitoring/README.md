@@ -2,6 +2,8 @@
 
 Prometheus scrapes the API, matching workers, market simulator, PostgreSQL exporter, and Redis exporter every 15 seconds. Grafana is provisioned with the Prometheus datasource and the **Exchange Overview** dashboard.
 
+The dashboard covers buy/sell order flow, cancellations, user fills, execution notional, market prices, API latency and status codes, worker/simulator errors, and PostgreSQL/Redis availability. Metrics have bounded labels (`instrument`, `side`, and `order_type`); never add user or order IDs as labels.
+
 Each monitoring component has its own Dockerfile with a pinned upstream image digest. Compose builds these local Dockerfiles, so monitoring configuration and dashboard provisioning are versioned with the application.
 
 Start the stack with:

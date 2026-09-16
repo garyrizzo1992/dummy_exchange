@@ -30,3 +30,5 @@ The binary loads root `.env` for local development.
 ## Failure behaviour
 
 If PostgreSQL is unavailable, the worker logs the failure and retries. Orders and fills are transactional, and duplicate fill insertion is guarded by a database unique constraint. A worker restart cannot lose committed trades; another worker can acquire the released instrument lease.
+
+`/metrics` exposes worker ticks/errors, total fills, user buy/sell fills, and execution-notional summaries. Trade metrics are labelled by instrument only, keeping Prometheus cardinality bounded when the worker fleet scales.

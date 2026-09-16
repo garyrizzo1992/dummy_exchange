@@ -9,6 +9,7 @@ use axum::{
 use exchange_domain::{NewOrder, OrderType, Side};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -272,7 +273,28 @@ async fn place_order(
     tx.commit()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    metrics::counter!("orders_accepted_total").increment(1);
+    let side = match o.side {
+        Side::Buy => "buy",
+        Side::Sell => "sell",
+    };
+    let order_type = match o.order_type {
+        OrderType::Market => "market",
+        OrderType::Limit => "limit",
+    };
+    metrics::counter!(
+        "orders_accepted_total",
+        "instrument" => o.instrument.clone(),
+        "side" => side,
+        "order_type" => order_type
+    )
+    .increment(1);
+    metrics::histogram!(
+        "order_notional_usd",
+        "instrument" => o.instrument.clone(),
+        "side" => side,
+        "order_type" => order_type
+    )
+    .record((o.quantity * price).to_f64().unwrap_or_default());
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({"id":id,"status":"open"})),
@@ -312,6 +334,12 @@ async fn cancel(
     tx.commit()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    metrics::counter!(
+        "orders_cancelled_total",
+        "instrument" => symbol,
+        "side" => side
+    )
+    .increment(1);
     Ok(Json(serde_json::json!({"id":id,"status":"cancelled"})))
 }
 async fn open_orders(
