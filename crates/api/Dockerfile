@@ -17,7 +17,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/exchange-api /usr/local/bin/exchange-api
 
-USER exchange
+USER 10001
 WORKDIR /home/exchange
 
 ENV API_BIND=0.0.0.0:3000

@@ -16,7 +16,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/exchange-worker /usr/local/bin/exchange-worker
 
-USER exchange
+USER 10001
 WORKDIR /home/exchange
 
 EXPOSE 3001

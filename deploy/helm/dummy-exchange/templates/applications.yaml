@@ -48,6 +48,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 10001
             capabilities: { drop: ["ALL"] }
           ports:
             - name: http
@@ -127,6 +128,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 10001
             capabilities: { drop: ["ALL"] }
           ports:
             - name: metrics
@@ -193,6 +195,7 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            runAsUser: 10001
             capabilities: { drop: ["ALL"] }
           ports:
             - name: metrics

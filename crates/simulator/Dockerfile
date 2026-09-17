@@ -16,7 +16,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/exchange-simulator /usr/local/bin/exchange-simulator
 
-USER exchange
+USER 10001
 WORKDIR /home/exchange
 
 EXPOSE 3002
