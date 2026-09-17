@@ -86,6 +86,10 @@ Before the first publishing run, add these **repository secrets** in GitHub unde
 
 The default-branch build receives `latest`, `main`, and a commit-SHA tag. A `v1.2.3` tag additionally publishes `1.2.3` and `1.2`. Deploy a specific immutable image digest after the workflow completes rather than using `latest`.
 
+## Kubernetes GitOps
+
+The [Kubernetes deployment guide](deploy/README.md) includes a self-contained Helm chart and an Argo CD Application for Minikube. The same chart works on any Argo CD-managed cluster by using environment-specific values and changing the Application destination.
+
 ### API examples
 
 ```bash

@@ -1,0 +1,116 @@
+{{- if .Values.monitoring.enabled }}
+{{- $name := include "dummy-exchange.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-grafana-provisioning
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ $name }}-prometheus:9090
+        isDefault: true
+        editable: false
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Exchange
+        orgId: 1
+        folder: Exchange
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-grafana-dashboard
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+data:
+  exchange-overview.json: |
+    {{- .Files.Get "files/exchange-overview.json" | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-grafana
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.monitoring.grafana.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.monitoring.grafana.service.port }}
+      targetPort: http
+      {{- with .Values.monitoring.grafana.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "dummy-exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-grafana
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      labels:
+        {{- include "dummy-exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: {{ .Values.monitoring.grafana.image }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.grafanaAdminPassword }}
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+          volumeMounts:
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources/prometheus.yaml
+              subPath: prometheus.yaml
+              readOnly: true
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+              readOnly: true
+            - name: dashboard
+              mountPath: /var/lib/grafana/dashboards/exchange-overview.json
+              subPath: exchange-overview.json
+              readOnly: true
+      volumes:
+        - name: provisioning
+          configMap: { name: {{ $name }}-grafana-provisioning }
+        - name: dashboard
+          configMap: { name: {{ $name }}-grafana-dashboard }
+{{- end }}

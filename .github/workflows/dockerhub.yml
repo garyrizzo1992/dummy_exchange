@@ -32,6 +32,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.17.3
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -43,6 +48,12 @@ jobs:
 
       - name: Build release workspace
         run: cargo build --workspace --release --locked
+
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/dummy-exchange
+
+      - name: Render Minikube manifests
+        run: helm template exchange deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-minikube.yaml > /dev/null
 
   verify-containers:
     name: Verify ${{ matrix.service }} image

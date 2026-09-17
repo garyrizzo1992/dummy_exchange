@@ -1,0 +1,20 @@
+imagePullPolicy: Always
+fullnameOverride: exchange
+
+api:
+  service:
+    type: NodePort
+    port: 3000
+    nodePort: 30000
+
+monitoring:
+  prometheus:
+    service:
+      type: NodePort
+      port: 9090
+      nodePort: 30090
+  grafana:
+    service:
+      type: NodePort
+      port: 3000
+      nodePort: 30001

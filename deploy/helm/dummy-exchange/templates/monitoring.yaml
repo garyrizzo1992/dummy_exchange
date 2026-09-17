@@ -1,0 +1,247 @@
+{{- if .Values.monitoring.enabled }}
+{{- $name := include "dummy-exchange.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-prometheus
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+      - job_name: exchange-api
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["{{ $name }}-api:3000"]
+      - job_name: matching-worker
+        metrics_path: /metrics
+        dns_sd_configs:
+          - names: ["{{ $name }}-worker"]
+            type: A
+            port: 3001
+      - job_name: market-simulator
+        metrics_path: /metrics
+        static_configs:
+          - targets: ["{{ $name }}-simulator:3002"]
+      - job_name: postgres
+        static_configs:
+          - targets: ["{{ $name }}-postgres-exporter:9187"]
+      {{- if .Values.redis.enabled }}
+      - job_name: redis
+        static_configs:
+          - targets: ["{{ $name }}-redis-exporter:9121"]
+      {{- end }}
+  alerts.yml: |
+    groups:
+      - name: exchange-availability
+        rules:
+          - alert: ExchangeApiUnavailable
+            expr: up{job="exchange-api"} == 0
+            for: 1m
+            labels: { severity: critical }
+            annotations: { summary: Exchange API scrape target is unavailable }
+          - alert: PostgreSQLUnavailable
+            expr: pg_up == 0
+            for: 1m
+            labels: { severity: critical }
+            annotations: { summary: PostgreSQL exporter cannot connect to the exchange database }
+          {{- if .Values.redis.enabled }}
+          - alert: RedisUnavailable
+            expr: redis_up == 0
+            for: 5m
+            labels: { severity: warning }
+            annotations: { summary: Redis exporter cannot reach Redis }
+          {{- end }}
+          - alert: ElevatedApiErrorRate
+            expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.05
+            for: 5m
+            labels: { severity: warning }
+            annotations: { summary: More than 5 percent of API requests are failing with 5xx responses }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-prometheus
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.monitoring.prometheus.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.monitoring.prometheus.service.port }}
+      targetPort: http
+      {{- with .Values.monitoring.prometheus.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "dummy-exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-prometheus
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "dummy-exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ .Values.monitoring.prometheus.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet: { path: /-/ready, port: http }
+            initialDelaySeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap: { name: {{ $name }}-prometheus }
+        - name: data
+          {{- if .Values.monitoring.prometheus.persistence.enabled }}
+          persistentVolumeClaim: { claimName: {{ $name }}-prometheus }
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- if .Values.monitoring.prometheus.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-prometheus
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.monitoring.prometheus.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.prometheus.persistence.size }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-postgres-exporter
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres-exporter
+  template:
+    metadata:
+      labels:
+        {{- include "dummy-exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-exporter
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: {{ .Values.monitoring.postgresExporter.image }}
+          ports:
+            - name: metrics
+              containerPort: 9187
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.postgresPassword }}
+            - name: DATA_SOURCE_NAME
+              value: postgresql://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@{{ $name }}-postgres:5432/{{ .Values.postgres.database }}?sslmode=disable
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-postgres-exporter
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+  selector:
+    {{- include "dummy-exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+{{- if .Values.redis.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-redis-exporter
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis-exporter
+  template:
+    metadata:
+      labels:
+        {{- include "dummy-exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis-exporter
+    spec:
+      containers:
+        - name: redis-exporter
+          image: {{ .Values.monitoring.redisExporter.image }}
+          ports:
+            - name: metrics
+              containerPort: 9121
+          env:
+            - name: REDIS_ADDR
+              value: redis://{{ $name }}-redis:6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-redis-exporter
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+  selector:
+    {{- include "dummy-exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+{{- end }}
+{{- end }}

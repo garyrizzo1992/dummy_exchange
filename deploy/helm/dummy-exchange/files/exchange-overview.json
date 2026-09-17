@@ -1,0 +1,27 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {"type":"stat","title":"API availability","targets":[{"expr":"min(up{job=\"exchange-api\"})"}],"fieldConfig":{"defaults":{"thresholds":{"mode":"absolute","steps":[{"color":"red","value":null},{"color":"green","value":1}]}}},"gridPos":{"h":7,"w":6,"x":0,"y":0}},
+    {"type":"stat","title":"Buy orders / second","targets":[{"expr":"sum(rate(orders_accepted_total{side=\"buy\"}[5m]))"}],"gridPos":{"h":7,"w":6,"x":6,"y":0}},
+    {"type":"stat","title":"Sell orders / second","targets":[{"expr":"sum(rate(orders_accepted_total{side=\"sell\"}[5m]))"}],"gridPos":{"h":7,"w":6,"x":12,"y":0}},
+    {"type":"stat","title":"Cancellations / second","targets":[{"expr":"sum(rate(orders_cancelled_total[5m]))"}],"gridPos":{"h":7,"w":6,"x":18,"y":0}},
+    {"type":"timeseries","title":"Order flow by side and market","targets":[{"expr":"sum by (side, instrument) (rate(orders_accepted_total[5m]))","legendFormat":"{{side}} {{instrument}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":7}},
+    {"type":"timeseries","title":"User fills by side","targets":[{"expr":"sum by (instrument) (rate(matching_user_buy_fills_total[5m]))","legendFormat":"buy {{instrument}}"},{"expr":"sum by (instrument) (rate(matching_user_sell_fills_total[5m]))","legendFormat":"sell {{instrument}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":7}},
+    {"type":"timeseries","title":"Executed fills / second","targets":[{"expr":"sum by (instrument) (rate(matching_fills_total[5m]))","legendFormat":"{{instrument}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":15}},
+    {"type":"timeseries","title":"Average execution notional (USD)","targets":[{"expr":"sum by (instrument) (rate(matching_fill_notional_usd_sum[5m])) / sum by (instrument) (rate(matching_fill_notional_usd_count[5m]))","legendFormat":"{{instrument}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":15}},
+    {"type":"timeseries","title":"Market reference prices","targets":[{"expr":"market_reference_price","legendFormat":"{{instrument}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":23}},
+    {"type":"timeseries","title":"Average API request latency (seconds)","targets":[{"expr":"sum by (method) (rate(http_request_duration_seconds_sum[5m])) / sum by (method) (rate(http_request_duration_seconds_count[5m]))","legendFormat":"{{method}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":23}},
+    {"type":"timeseries","title":"API status codes","targets":[{"expr":"sum by (status) (rate(http_requests_total[5m]))","legendFormat":"HTTP {{status}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":31}},
+    {"type":"timeseries","title":"Worker and simulator health","targets":[{"expr":"sum(rate(matching_worker_errors_total[5m]))","legendFormat":"worker errors / sec"},{"expr":"sum(rate(market_simulator_errors_total[5m]))","legendFormat":"simulator errors / sec"},{"expr":"sum(rate(market_simulator_updates_total[5m]))","legendFormat":"market updates / sec"}],"gridPos":{"h":8,"w":12,"x":12,"y":31}},
+    {"type":"timeseries","title":"Database and Redis availability","targets":[{"expr":"pg_up","legendFormat":"postgres"},{"expr":"redis_up","legendFormat":"redis"}],"gridPos":{"h":8,"w":12,"x":0,"y":39}},
+    {"type":"timeseries","title":"Average order size (USD)","targets":[{"expr":"sum by (side, instrument) (rate(order_notional_usd_sum[5m])) / sum by (side, instrument) (rate(order_notional_usd_count[5m]))","legendFormat":"{{side}} {{instrument}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":39}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["exchange", "sre"],
+  "templating": {"list": []},
+  "time": {"from":"now-1h","to":"now"},
+  "title": "Exchange Overview",
+  "uid": "exchange-overview",
+  "version": 2
+}
