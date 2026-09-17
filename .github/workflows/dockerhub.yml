@@ -1,4 +1,7 @@
-name: Verify and publish Docker images
+name: Test and publish Docker images
+
+# Pull requests run tests and build all three images without publishing them.
+# Pushes to main and version tags run the same checks, then publish to Docker Hub.
 
 on:
   pull_request:
@@ -20,145 +23,65 @@ env:
   REGISTRY: docker.io
 
 jobs:
-  changes:
-    name: Detect image changes
-    runs-on: ubuntu-24.04
-    outputs:
-      any: ${{ steps.matrix.outputs.any }}
-      matrix: ${{ steps.matrix.outputs.matrix }}
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v6
-
-      - name: Detect changed service inputs
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            api:
-              - '.dockerignore'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'crates/domain/**'
-              - 'crates/api/**'
-              - 'migrations/**'
-            worker:
-              - '.dockerignore'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'crates/domain/**'
-              - 'crates/worker/**'
-            simulator:
-              - '.dockerignore'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'crates/domain/**'
-              - 'crates/simulator/**'
-
-      - name: Build the affected-image matrix
-        id: matrix
-        env:
-          API_CHANGED: ${{ steps.filter.outputs.api }}
-          WORKER_CHANGED: ${{ steps.filter.outputs.worker }}
-          SIMULATOR_CHANGED: ${{ steps.filter.outputs.simulator }}
-          FORCE_ALL: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
-        run: |
-          images=()
-          if [[ "$FORCE_ALL" == "true" || "$API_CHANGED" == "true" ]]; then
-            images+=('{"service":"api","dockerfile":"crates/api/Dockerfile"}')
-          fi
-          if [[ "$FORCE_ALL" == "true" || "$WORKER_CHANGED" == "true" ]]; then
-            images+=('{"service":"worker","dockerfile":"crates/worker/Dockerfile"}')
-          fi
-          if [[ "$FORCE_ALL" == "true" || "$SIMULATOR_CHANGED" == "true" ]]; then
-            images+=('{"service":"simulator","dockerfile":"crates/simulator/Dockerfile"}')
-          fi
-
-          if [[ ${#images[@]} -eq 0 ]]; then
-            echo 'any=false' >> "$GITHUB_OUTPUT"
-            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
-          else
-            joined=$(IFS=,; echo "${images[*]}")
-            echo 'any=true' >> "$GITHUB_OUTPUT"
-            echo "matrix={\"include\":[${joined}]}" >> "$GITHUB_OUTPUT"
-          fi
-
   test:
-    name: Rust checks
+    name: 1. Test code and Helm chart
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Check out source
+      - name: Download repository
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.98.1
+      - name: Set up Rust 1.98.1
         uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
 
-      - name: Install Helm
+      - name: Set up Helm 3.17.3
         uses: azure/setup-helm@v5
         with:
           version: v3.17.3
 
-      - name: Check formatting
+      - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint
+      - name: Lint Rust code
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Run tests
+      - name: Run Rust tests
         run: cargo test --workspace --locked
 
-      - name: Build release workspace
+      - name: Compile release binaries
         run: cargo build --workspace --release --locked
 
-      - name: Lint Helm chart
+      - name: Validate Helm chart
         run: helm lint deploy/helm/dummy-exchange
 
-      - name: Render Minikube manifests
+      - name: Validate Minikube configuration
         run: helm template exchange deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-minikube.yaml > /dev/null
 
-  verify-containers:
-    name: Verify ${{ matrix.service }} image
-    if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
-    needs: [test, changes]
+  images:
+    name: 2. Build Docker image - ${{ matrix.service }}
+    needs: test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      IMAGE_NAMESPACE: ${{ github.event_name == 'pull_request' && 'local' || secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+      matrix:
+        include:
+          - service: api
+            dockerfile: crates/api/Dockerfile
+          - service: worker
+            dockerfile: crates/worker/Dockerfile
+          - service: simulator
+            dockerfile: crates/simulator/Dockerfile
     steps:
-      - name: Check out source
+      - name: Download repository
         uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build without publishing
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: false
-          tags: local/dummy-exchange-${{ matrix.service }}:ci
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-
-  publish:
-    name: Publish ${{ matrix.service }} image
-    if: github.event_name != 'pull_request' && needs.changes.outputs.any == 'true'
-    needs: [test, changes]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v6
-
-      - name: Require Docker Hub credentials
+      - name: Check Docker Hub credentials
+        if: github.event_name != 'pull_request'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -167,17 +90,18 @@ jobs:
           test -n "$DOCKERHUB_TOKEN" || { echo "Missing DOCKERHUB_TOKEN repository secret."; exit 1; }
 
       - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Generate image metadata
+      - name: Create Docker image tags
         id: metadata
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/dummy-exchange-${{ matrix.service }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -189,12 +113,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push image
+      - name: Build image and publish when allowed
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.service }}
