@@ -21,11 +21,11 @@ For a real environment, manage this secret with a sealed-secret, External Secret
 ## Minikube with Argo CD
 
 ```powershell
-minikube start --driver=docker
-kubectl create namespace argocd
-kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.3/manifests/install.yaml
+.\scripts\install-argocd.ps1 -StartMinikube
 kubectl apply -f deploy/argocd/dummy-exchange-minikube.yaml
 ```
+
+`install-argocd.ps1` is idempotent: it creates the namespace when absent, applies the pinned default Argo CD manifest, waits for `argocd-server`, and prints the initial `admin` password. Omit `-StartMinikube` when `kubectl` is already configured for another cluster.
 
 Argo CD continuously reconciles the chart from `main`, creates the `dummy-exchange` namespace if necessary, self-heals drift, and prunes resources removed from Git. The chart’s Minikube values expose NodePorts:
 
