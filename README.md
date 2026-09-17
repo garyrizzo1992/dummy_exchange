@@ -69,6 +69,23 @@ The matching workers, simulator, and exporter metrics endpoints remain internal 
 docker compose up --scale worker=3
 ```
 
+## CI and Docker Hub images
+
+The GitHub Actions workflow at `.github/workflows/dockerhub.yml` runs formatting, Clippy, tests, a release build, and Dockerfile builds. Pull requests verify images without publishing. Pushes to `main`, version tags such as `v0.1.0`, and manual runs publish these images to Docker Hub:
+
+| Service | Docker Hub repository |
+|---|---|
+| API | `<DOCKERHUB_USERNAME>/dummy-exchange-api` |
+| Matching worker | `<DOCKERHUB_USERNAME>/dummy-exchange-worker` |
+| Market simulator | `<DOCKERHUB_USERNAME>/dummy-exchange-simulator` |
+
+Before the first publishing run, add these **repository secrets** in GitHub under **Settings → Secrets and variables → Actions**:
+
+- `DOCKERHUB_USERNAME`: your Docker Hub namespace.
+- `DOCKERHUB_TOKEN`: a Docker Hub access token with write access to that namespace; do not use your account password.
+
+The default-branch build receives `latest`, `main`, and a commit-SHA tag. A `v1.2.3` tag additionally publishes `1.2.3` and `1.2`. Deploy a specific immutable image digest after the workflow completes rather than using `latest`.
+
 ### API examples
 
 ```bash
@@ -108,6 +125,6 @@ Matching invariants are unit tested in the domain crate. The [failure-mode playb
 
 ## Deployment assumptions
 
-The deployment environment supplies PostgreSQL, optional Redis, secrets, network ingress, and telemetry collectors. Workers are launched independently with a unique `WORKER_ID` and scaled externally. No container, orchestration, infrastructure, CI/CD, or monitoring-stack artefacts are included by design.
+The deployment environment supplies PostgreSQL, optional Redis, secrets, network ingress, and telemetry collectors. Workers are launched independently with a unique `WORKER_ID` and scaled externally. Local Compose, monitoring, and Docker Hub publishing artefacts are included; production orchestration remains deployment-specific.
 
 Container and platform implementers should use the detailed [API service](docs/hosting/api-service.md), [matching worker](docs/hosting/matching-worker.md), [market simulator](docs/hosting/market-simulator.md), and [dependency](docs/hosting/dependencies.md) hosting contracts.
