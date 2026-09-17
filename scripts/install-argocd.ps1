@@ -5,6 +5,10 @@ param(
 
     [string]$Namespace = 'argocd',
 
+    [string]$ApplicationNamespace = 'dummy-exchange',
+
+    [string]$ApplicationSecretName = 'dummy-exchange-secrets',
+
     [switch]$StartMinikube,
 
     [ValidateSet('docker', 'hyperv', 'virtualbox')]
@@ -47,6 +51,33 @@ if ([string]::IsNullOrWhiteSpace($namespaceExists)) {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create namespace '$Namespace'."
     }
+}
+
+$applicationNamespaceExists = (& kubectl get namespace $ApplicationNamespace --ignore-not-found -o name) -join ''
+if ([string]::IsNullOrWhiteSpace($applicationNamespaceExists)) {
+    Write-Host "Creating application namespace '$ApplicationNamespace'..."
+    & kubectl create namespace $ApplicationNamespace
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not create application namespace '$ApplicationNamespace'."
+    }
+}
+
+# These values are deliberately only suitable for the local test environment.
+# `kubectl apply` makes bootstrap repeatable and replaces the prior test secret.
+Write-Host "Creating test application secret '$ApplicationSecretName' in '$ApplicationNamespace'..."
+$secretManifest = & kubectl -n $ApplicationNamespace create secret generic $ApplicationSecretName `
+    '--from-literal=postgres-password=password' `
+    '--from-literal=jwt-secret=local-development-secret-change-before-any-shared-use' `
+    '--from-literal=grafana-admin-password=admin' `
+    '--dry-run=client' `
+    '-o' 'yaml'
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not generate application secret '$ApplicationSecretName'."
+}
+
+$secretManifest | & kubectl apply -f -
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not apply application secret '$ApplicationSecretName'."
 }
 
 $manifest = "https://raw.githubusercontent.com/argoproj/argo-cd/$Version/manifests/install.yaml"

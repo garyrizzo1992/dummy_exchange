@@ -6,15 +6,9 @@
 
 Push the three application images to Docker Hub first. The chart defaults to `docker.io/garyrizzo1992`; if your Docker Hub username differs, change `imageRegistry` in a committed environment values file or set it in the Argo CD Application.
 
-The chart deliberately does not create credentials. Create one Kubernetes secret before Argo CD syncs the Application:
-
-```powershell
-kubectl create namespace dummy-exchange
-kubectl -n dummy-exchange create secret generic dummy-exchange-secrets `
-  --from-literal=postgres-password='<choose-a-strong-password>' `
-  --from-literal=jwt-secret='<at-least-32-random-characters>' `
-  --from-literal=grafana-admin-password='<choose-a-strong-password>'
-```
+The installer creates the `dummy-exchange` namespace and its required
+`dummy-exchange-secrets` secret. Its fixed values (`password`, a local JWT
+secret, and `admin`) are deliberately for this local test environment only.
 
 For a real environment, manage this secret with a sealed-secret, External Secrets Operator, or your platform secret manager—not with Git.
 
@@ -25,7 +19,7 @@ For a real environment, manage this secret with a sealed-secret, External Secret
 kubectl apply -f deploy/argocd/dummy-exchange-minikube.yaml
 ```
 
-`install-argocd.ps1` is idempotent: it creates the namespace when absent, applies the pinned default Argo CD manifest, waits for `argocd-server`, and prints the initial `admin` password. Omit `-StartMinikube` when `kubectl` is already configured for another cluster.
+`install-argocd.ps1` is idempotent: it creates the Argo CD and application namespaces when absent, creates or updates the local test secret, applies the pinned default Argo CD manifest, waits for `argocd-server`, and prints the initial `admin` password. Omit `-StartMinikube` when `kubectl` is already configured for another cluster.
 
 Argo CD continuously reconciles the chart from `main`, creates the `dummy-exchange` namespace if necessary, self-heals drift, and prunes resources removed from Git. The chart’s Minikube values expose NodePorts:
 
