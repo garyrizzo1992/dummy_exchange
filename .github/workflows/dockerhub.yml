@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: docker-images-${{ github.workflow }}-${{ github.ref }}
@@ -19,6 +20,69 @@ env:
   REGISTRY: docker.io
 
 jobs:
+  changes:
+    name: Detect image changes
+    runs-on: ubuntu-24.04
+    outputs:
+      any: ${{ steps.matrix.outputs.any }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Detect changed service inputs
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - '.dockerignore'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/domain/**'
+              - 'crates/api/**'
+              - 'migrations/**'
+            worker:
+              - '.dockerignore'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/domain/**'
+              - 'crates/worker/**'
+            simulator:
+              - '.dockerignore'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/domain/**'
+              - 'crates/simulator/**'
+
+      - name: Build the affected-image matrix
+        id: matrix
+        env:
+          API_CHANGED: ${{ steps.filter.outputs.api }}
+          WORKER_CHANGED: ${{ steps.filter.outputs.worker }}
+          SIMULATOR_CHANGED: ${{ steps.filter.outputs.simulator }}
+          FORCE_ALL: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          images=()
+          if [[ "$FORCE_ALL" == "true" || "$API_CHANGED" == "true" ]]; then
+            images+=('{"service":"api","dockerfile":"crates/api/Dockerfile"}')
+          fi
+          if [[ "$FORCE_ALL" == "true" || "$WORKER_CHANGED" == "true" ]]; then
+            images+=('{"service":"worker","dockerfile":"crates/worker/Dockerfile"}')
+          fi
+          if [[ "$FORCE_ALL" == "true" || "$SIMULATOR_CHANGED" == "true" ]]; then
+            images+=('{"service":"simulator","dockerfile":"crates/simulator/Dockerfile"}')
+          fi
+
+          if [[ ${#images[@]} -eq 0 ]]; then
+            echo 'any=false' >> "$GITHUB_OUTPUT"
+            echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+          else
+            joined=$(IFS=,; echo "${images[*]}")
+            echo 'any=true' >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":[${joined}]}" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Rust checks
     runs-on: ubuntu-24.04
@@ -57,20 +121,13 @@ jobs:
 
   verify-containers:
     name: Verify ${{ matrix.service }} image
-    if: github.event_name == 'pull_request'
-    needs: test
+    if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
+    needs: [test, changes]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: api
-            dockerfile: crates/api/Dockerfile
-          - service: worker
-            dockerfile: crates/worker/Dockerfile
-          - service: simulator
-            dockerfile: crates/simulator/Dockerfile
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6
@@ -90,20 +147,13 @@ jobs:
 
   publish:
     name: Publish ${{ matrix.service }} image
-    if: github.event_name != 'pull_request'
-    needs: test
+    if: github.event_name != 'pull_request' && needs.changes.outputs.any == 'true'
+    needs: [test, changes]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - service: api
-            dockerfile: crates/api/Dockerfile
-          - service: worker
-            dockerfile: crates/worker/Dockerfile
-          - service: simulator
-            dockerfile: crates/simulator/Dockerfile
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - name: Check out source
         uses: actions/checkout@v6

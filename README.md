@@ -71,7 +71,7 @@ docker compose up --scale worker=3
 
 ## CI and Docker Hub images
 
-The GitHub Actions workflow at `.github/workflows/dockerhub.yml` runs formatting, Clippy, tests, a release build, and Dockerfile builds. Pull requests verify images without publishing. Pushes to `main`, version tags such as `v0.1.0`, and manual runs publish these images to Docker Hub:
+The GitHub Actions workflow at `.github/workflows/dockerhub.yml` runs formatting, Clippy, tests, a release build, and Dockerfile builds. On pull requests and normal `main` pushes, it builds only images affected by source, Dockerfile, workspace dependency, domain, or migration changes; docs and Helm-only changes do not publish images. Version tags such as `v0.1.0` and manual runs build all three images so a complete release is available. Pull requests verify images without publishing; qualifying pushes publish to Docker Hub:
 
 | Service | Docker Hub repository |
 |---|---|
