@@ -1,0 +1,9 @@
+---
+- name: Verify the supported Kubernetes node platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == "RedHat"
+      - ansible_facts.architecture == "aarch64"
+    fail_msg: >-
+      This role currently supports Oracle Linux on ARM (aarch64) only.
+    success_msg: Oracle Linux ARM platform verified.

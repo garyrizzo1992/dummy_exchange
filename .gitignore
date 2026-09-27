@@ -1,3 +1,14 @@
 /target
 .env
 *.local
+
+# Terraform: state, plans, local inputs, and backend settings can contain secrets.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+terraform/backend.hcl

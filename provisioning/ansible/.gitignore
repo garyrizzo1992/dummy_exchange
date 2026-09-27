@@ -1,0 +1,8 @@
+# Installed collection content is reproducible from collections/requirements.yml.
+collections/ansible_collections/
+
+# Controller-local runtime data and credentials.
+.ansible/
+*.retry
+.vault-pass*
+vault-password*

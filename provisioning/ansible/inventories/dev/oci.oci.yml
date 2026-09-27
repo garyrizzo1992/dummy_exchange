@@ -1,0 +1,27 @@
+---
+plugin: oracle.oci.oci
+
+config_file: ~/.oci/config
+config_profile: DEFAULT
+
+regions:
+  - eu-milan-1
+
+compartments:
+  - compartment_name: dummy-exchange
+    fetch_hosts_from_subcompartments: false
+
+primary_vnic_only: true
+hostname_format: display_name
+
+compose:
+  ansible_host: private_ip
+
+include_host_filters:
+  - >
+    'dummy-exchange' == freeform_tags.Application
+    and 'dev' == freeform_tags.Environment
+
+groups:
+  control_plane: "'control-plane' == freeform_tags.Component"
+  workers: "'worker' == freeform_tags.Component"

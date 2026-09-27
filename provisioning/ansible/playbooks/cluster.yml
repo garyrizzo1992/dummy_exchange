@@ -1,0 +1,7 @@
+---
+- name: Configure Kubernetes nodes
+  hosts: control_plane:workers
+  gather_facts: true
+  become: true
+  roles:
+    - role: k8s
