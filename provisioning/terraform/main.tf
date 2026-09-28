@@ -21,6 +21,7 @@ resource "oci_identity_compartment" "dummy_exchange" {
 resource "oci_core_vcn" "vcn" {
   compartment_id = oci_identity_compartment.dummy_exchange.id
   cidr_blocks    = ["10.0.0.0/16"]
+  dns_label      = "dummyexchange"
   display_name   = "${var.application}-${var.environment}-vcn"
   freeform_tags  = local.freeform_tags
 }
@@ -82,6 +83,7 @@ resource "oci_core_subnet" "dummy_exchange_pub" {
   compartment_id            = oci_identity_compartment.dummy_exchange.id
   vcn_id                    = oci_core_vcn.vcn.id
   cidr_block                = "10.0.1.0/24"
+  dns_label                 = "public"
   display_name              = "${var.application}-${var.environment}-public-lb-subnet"
   freeform_tags             = local.freeform_tags
   prohibit_internet_ingress = false
@@ -92,6 +94,7 @@ resource "oci_core_subnet" "dummy_exchange_priv" {
   compartment_id            = oci_identity_compartment.dummy_exchange.id
   vcn_id                    = oci_core_vcn.vcn.id
   cidr_block                = "10.0.2.0/24"
+  dns_label                 = "private"
   display_name              = "${var.application}-${var.environment}-private-vm-subnet"
   freeform_tags             = local.freeform_tags
   prohibit_internet_ingress = true
@@ -118,6 +121,7 @@ resource "oci_bastion_bastion" "bastion" {
   bastion_type     = "STANDARD"
   compartment_id   = oci_identity_compartment.dummy_exchange.id
   target_subnet_id = oci_core_subnet.dummy_exchange_priv.id
+  max_session_ttl_in_seconds = 10800
 
   #Optional
   client_cidr_block_allow_list = ["${trimspace(data.http.terraform_runner_ip.response_body)}/32"]
@@ -132,11 +136,19 @@ resource "oci_core_instance" "control_plane" {
   display_name        = "${var.application}-${var.environment}-control-plane"
   shape               = "VM.Standard.A1.Flex"
 
+  agent_config {
+    plugins_config {
+      name          = "Bastion"
+      desired_state = "ENABLED"
+    }
+  }
 
   create_vnic_details {
     subnet_id        = oci_core_subnet.dummy_exchange_priv.id
     assign_public_ip = false
+    assign_private_dns_record = true
     display_name     = "${var.application}-${var.environment}-control-plane-vnic"
+    hostname_label   = "control-plane"
     nsg_ids          = [oci_core_network_security_group.kubernetes_nodes.id]
   }
 
@@ -167,10 +179,19 @@ resource "oci_core_instance" "worker" {
   display_name        = "${var.application}-${var.environment}-worker"
   shape               = "VM.Standard.A1.Flex"
 
+  agent_config {
+    plugins_config {
+      name          = "Bastion"
+      desired_state = "ENABLED"
+    }
+  }
+
   create_vnic_details {
     subnet_id        = oci_core_subnet.dummy_exchange_priv.id
     assign_public_ip = false
-    display_name     = "${var.application}-${var.environment}-control-plane-vnic"
+    assign_private_dns_record = true
+    display_name     = "${var.application}-${var.environment}-worker-vnic"
+    hostname_label   = "worker"
     nsg_ids          = [oci_core_network_security_group.kubernetes_nodes.id]
   }
 
@@ -192,7 +213,7 @@ resource "oci_core_instance" "worker" {
   }
 
   freeform_tags = merge(local.freeform_tags, {
-    Component = "control-plane"
+    Component = "worker"
   })
 }
 
