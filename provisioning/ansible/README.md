@@ -5,12 +5,14 @@ This directory configures the OCI Kubernetes nodes after Terraform creates them.
 Run commands from this directory in WSL:
 
 ```bash
-ansible-galaxy collection install -r collections/requirements.yml -p collections
-ansible-inventory --graph
-ansible-playbook playbooks/cluster.yml
+bash ansible-playbook-wrapper.sh -i inventories/dev/terraform.ini playbooks/cluster.yml
 ```
 
-The OCI dynamic inventory reads controller credentials from `~/.oci/config`.
+The wrapper discovers the nodes through OCI and creates Bastion SSH connections
+for local runs. The private CI runner sets `SSH_CONNECTION_MODE=private` and uses
+instance identity instead. Terraform invokes the same wrapper automatically.
+
+The optional OCI dynamic inventory reads credentials from `~/.oci/config`.
 Do not commit API keys, SSH private keys, or vault-password files.
 
 The inventory selects nodes by their `Application`, `Environment`, and

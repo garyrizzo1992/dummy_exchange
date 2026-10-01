@@ -2,6 +2,17 @@
 
 `helm/dummy-exchange` is a self-contained chart for the public API, horizontally scalable matching workers, market simulator, PostgreSQL, optional Redis, Prometheus, and Grafana. `argocd/dummy-exchange-minikube.yaml` is an Argo CD `Application` that deploys it to the same cluster as Argo CD.
 
+## OCI development cluster
+
+`argocd/dummy-exchange-dev.yaml` reconciles the OCI kubeadm cluster from main,
+using immutable image digests and `values-dev.yaml`. Terraform and Ansible
+bootstrap Argo CD and External Secrets. OCI Vault stores the PostgreSQL password,
+JWT secret and Grafana password; only their identifiers are committed. Services
+remain private ClusterIPs. See [continuous delivery](../docs/cicd.md) for setup
+and the local-disk storage limitations.
+
+The instructions below describe the separate local Minikube environment.
+
 ## Prerequisites
 
 Push the three application images to Docker Hub first. The chart defaults to `docker.io/garyrizzo1992`; if your Docker Hub username differs, change `imageRegistry` in a committed environment values file or set it in the Argo CD Application.
