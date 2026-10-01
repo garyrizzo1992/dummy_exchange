@@ -162,5 +162,6 @@
 - name: Install Kubernetes networking and GitOps
   hosts: control_plane
   become: true
+  tags: cluster_addons
   roles:
     - cluster_addons

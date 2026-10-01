@@ -19,9 +19,9 @@ imageRegistry: docker.io/garyrizzo1992
 externalSecrets:
   enabled: true
   vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq
-  postgresSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiacpigp7k66shoxox4db4aqzeqdcihhvkfgtg7pmcejfja
-  jwtSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiafqvhwhg3almdlepe6s5koyfj4zyar3zctnogyfkyreha
-  grafanaSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkialximxd7wrc4bq3l2xxvsuw5fvlllquvsqtea33ivuyeq
+  postgresSecretName: dummy-exchange-dev-postgres-password
+  jwtSecretName: dummy-exchange-dev-jwt-secret
+  grafanaSecretName: dummy-exchange-dev-grafana-admin-password
 # Development data stays on the worker VM disk. Use durable CSI volumes and
 # backups before promoting this environment to production.
 postgres:

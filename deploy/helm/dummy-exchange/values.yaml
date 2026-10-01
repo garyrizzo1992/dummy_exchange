@@ -15,9 +15,9 @@ externalSecrets:
   enabled: false
   region: eu-milan-1
   vaultId: ""
-  postgresSecretId: ""
-  jwtSecretId: ""
-  grafanaSecretId: ""
+  postgresSecretName: ""
+  jwtSecretName: ""
+  grafanaSecretName: ""
 
 api:
   image:

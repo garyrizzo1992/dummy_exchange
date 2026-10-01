@@ -56,7 +56,7 @@ and deletion; reviews are not required because the promotion bot pushes directly
 3. Register the runner using a short-lived GitHub registration token piped to
    `provisioning/ansible/register-runner.sh`. Re-register after VM replacement.
 4. Create the three application secrets in OCI Vault outside Terraform. Enable
-   External Secrets and set the Vault/secret OCIDs in `values-dev.yaml`. Preserve
+   External Secrets and set the Vault OCID and secret names in `values-dev.yaml`. Preserve
    existing database credentials when migrating an existing cluster.
 5. Configure GitHub as above, merge to main and run the infrastructure workflow.
    Verify nodes Ready, ExternalSecret Ready, and Argo CD Synced/Healthy.
