@@ -11,4 +11,5 @@ crash.log
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+!provisioning/terraform/envs/dev.tfvars
 terraform/backend.hcl

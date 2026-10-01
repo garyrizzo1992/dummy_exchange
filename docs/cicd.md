@@ -18,10 +18,14 @@ cluster, Calico, Argo CD, and the Argo CD Application.
 Create a protected GitHub environment named `dev`. Add these environment
 secrets:
 
-- `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
 - `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, and `OCI_API_PRIVATE_KEY`
 - `CI_SSH_PUBLIC_KEY`, the SSH public key placed on the nodes
 - `CI_SSH_PRIVATE_KEY`, the matching private key used by Ansible through OCI Bastion
+
+Keep `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` as repository secrets, since the
+image build job does not use a GitHub environment. Set `OCI_IMAGE_OCID` as a `dev`
+environment variable for the x86_64 image used by both nodes. Public environment
+settings live in the committed `provisioning/terraform/envs/dev.tfvars`.
 
 The current workflows use OCI API-key authentication because the tenancy trust
 configuration cannot be created from this repository. Replace those long-lived

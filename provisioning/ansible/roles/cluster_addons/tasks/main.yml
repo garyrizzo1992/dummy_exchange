@@ -2,7 +2,7 @@
 # Calico supplies the Kubernetes pod network. It is pinned rather than fetched
 # from a moving branch: https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
 - name: Check whether Calico is installed
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get daemonset calico-node -n calico-system
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get daemonset calico-node -n kube-system
   register: calico
   changed_when: false
   failed_when: false
