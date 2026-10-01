@@ -23,7 +23,6 @@ jobs:
       TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-      TF_VAR_private_key_path: ${{ runner.temp }}/oci_api_key.pem
       TF_VAR_ssh_authorized_keys: ${{ secrets.CI_SSH_PUBLIC_KEY }}
       TF_VAR_ansible_runner: linux
       TF_VAR_ansible_wsl_directory: ${{ github.workspace }}/provisioning/ansible
@@ -41,6 +40,7 @@ jobs:
           printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci_api_key.pem"
           chmod 600 "$RUNNER_TEMP/oci_api_key.pem"
           printf '[DEFAULT]\ntenancy=%s\nuser=%s\nfingerprint=%s\nkey_file=%s\nregion=eu-milan-1\n' "$OCI_TENANCY_OCID" "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$RUNNER_TEMP/oci_api_key.pem" > "$HOME/.oci/config"
+          echo "TF_VAR_private_key_path=$RUNNER_TEMP/oci_api_key.pem" >> "$GITHUB_ENV"
       - run: terraform init
       - name: Fail when drift is detected
         run: |

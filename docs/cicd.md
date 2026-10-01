@@ -20,7 +20,8 @@ secrets:
 
 - `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
 - `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, and `OCI_API_PRIVATE_KEY`
-- `CI_SSH_PUBLIC_KEY`, an SSH public key placed on newly-created nodes
+- `CI_SSH_PUBLIC_KEY`, the SSH public key placed on the nodes
+- `CI_SSH_PRIVATE_KEY`, the matching private key used by Ansible through OCI Bastion
 
 The current workflows use OCI API-key authentication because the tenancy trust
 configuration cannot be created from this repository. Replace those long-lived
