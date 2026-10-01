@@ -5,15 +5,15 @@ imagePullPolicy: IfNotPresent
 api:
   image:
     tag: main
-    digest: "sha256:982bf17ce5c6af438b48f20b593ae3979a6cb841cdd77297d68d16edddf50202"
+    digest: "sha256:346af6a16f263e734df5077d737d8f726511e9c0d764d110f4781b707dfd31b9"
 worker:
   image:
     tag: main
-    digest: "sha256:f5121026e9341a2cb366c78caddf500f31f5b4489ae16dea7e1ccf9e2d4f1319"
+    digest: "sha256:ea275968fe11d19a6de3ea52050e45f333d53e4d51e8fafee3355ce71f9e9747"
 simulator:
   image:
     tag: main
-    digest: "sha256:148cbce3d03b5a109197439535a4be6703b70ff452623d57fd4dfdae16269959"
+    digest: "sha256:1a930c7de14f5194c3e442517d7ab43ab0c500f273ba242e18cfc09da858f84d"
 imageRegistry: docker.io/garyrizzo1992
 # Only identifiers are committed. Values are stored in OCI Vault.
 externalSecrets:
