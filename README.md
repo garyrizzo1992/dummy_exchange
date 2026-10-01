@@ -1,26 +1,26 @@
 # Dummy Exchange
 
-A practice trading exchange built in Rust. You can create an account, place
-orders, and trade BTC, ETH and SOL with pretend dollars.
+Dummy Exchange is a Rust project for practising trading. Each account starts
+with $100,000 in pretend dollars, which you can use to place orders for BTC,
+ETH and SOL. No real money changes hands, and it does not connect to an external
+exchange.
 
-Every new account gets $100,000 in simulated money. There is no real trading,
-no real money, and no connection to an external exchange.
+## How it works
 
-## What runs
+The API handles login, orders and account balances. A separate worker matches
+buy and sell orders, while the simulator changes prices and adds orders for
+users to trade against.
 
-The API handles login, orders and account balances. The worker matches buy and
-sell orders. The simulator changes prices and adds orders to the market.
+The services share a PostgreSQL database for balances, orders and completed
+trades. Docker Compose also starts Redis, though the Rust code does not use it yet.
 
-All three use PostgreSQL. It keeps the account balances, orders and completed
-trades. Redis is included in Docker Compose but is not used by the Rust code yet.
-
-Orders with better prices are matched first. If two orders have the same price,
-the older one goes first. Money is reserved when an order is placed, then used
-when it fills or returned when it is cancelled.
+Orders match at the best available price, with older orders going first when
+prices are equal. Placing an order reserves the money needed to fill it.
+That money is used when the order fills or released if you cancel it.
 
 ## Start with Docker
 
-Run these commands from the project folder. You need Docker with Compose.
+With Docker and Compose installed, run these commands from the project folder:
 
 ```powershell
 # Start the database and wait for it to be ready.
@@ -33,11 +33,11 @@ docker compose run --build --rm api migrate
 docker compose up --build
 ```
 
-The migrations also add the three markets and their starting prices.
+The database migrations create BTC, ETH and SOL markets with starting prices.
 
-Open the API at http://localhost:3000. Prometheus is at
-http://localhost:9090 and Grafana is at http://localhost:3001.
-The local Grafana login is `admin` / `admin`.
+The API runs at http://localhost:3000. You can view metrics in Prometheus at
+http://localhost:9090 or open Grafana at http://localhost:3001.
+Log in to the local Grafana instance with `admin` / `admin`.
 
 To stop the services without deleting the database:
 
@@ -49,7 +49,7 @@ The passwords in Compose are only for local testing.
 
 ## Run the Rust code directly
 
-You need Rust and PostgreSQL 16 or newer. Create a database first.
+Install Rust and PostgreSQL 16 or newer, then create a database.
 
 Copy the settings file:
 
@@ -66,7 +66,7 @@ Create the tables:
 cargo run -p exchange-api -- migrate
 ```
 
-Then run these commands in three separate terminals:
+Start each service in its own terminal:
 
 ```powershell
 cargo run -p exchange-api
@@ -74,12 +74,12 @@ cargo run -p exchange-worker
 cargo run -p exchange-simulator
 ```
 
-Run them from the project folder so each service can load `.env`.
+Use the project folder as your working directory so the services can load `.env`.
 
 ## Try it
 
-This PowerShell example creates a demo account and uses its login token to
-read the account balance. Use a different email if the account already exists.
+In PowerShell, create a demo account and use the returned login token to check
+its balance. Change the email if you have already registered this account.
 
 ```powershell
 $account = @{
@@ -97,7 +97,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/v1/instruments"
 The [API guide](crates/api/README.md) lists the routes for placing orders,
 cancelling orders and reading trades.
 
-## Find your way around
+## Project folders
 
 - `crates/domain`: order types, validation and matching rules. Start here.
 - `crates/api`: HTTP routes, authentication and database calls.
@@ -117,30 +117,30 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-The tests cover order validation and matching rules. They do not yet test the
-full application against a running database.
+The tests cover order validation and matching. Tests against a running database
+are still missing.
 
-The API also provides `/healthz` to check that it is running, `/readyz` to
-check its database connection, and `/metrics` for Prometheus.
+Use `/healthz` to check whether the API is running and `/readyz` to check its
+database connection. Prometheus reads metrics from `/metrics`.
 
 ## Deployment
 
-GitHub Actions checks application changes and builds the images. On `main`,
-it publishes them to Docker Hub and updates the development image versions in
-Git. Argo CD reads those versions and updates Kubernetes.
+GitHub Actions checks application changes and builds Docker images. Changes on
+`main` publish those images to Docker Hub and update the development versions
+in Git. Argo CD picks up the new versions and deploys them to Kubernetes.
 
-Terraform creates the OCI infrastructure. Ansible sets up Kubernetes.
-Application secrets are read from OCI Vault rather than stored in Git.
+Terraform creates the OCI infrastructure, and Ansible sets up Kubernetes.
+The application reads its secrets from OCI Vault. The secret values stay out of Git.
 
-The setup details are in the [pipeline guide](docs/cicd.md) and
-[deployment guide](deploy/README.md). Dashboards and alerts are covered in
-the [monitoring guide](monitoring/README.md).
+See the [pipeline guide](docs/cicd.md) and
+[deployment guide](deploy/README.md) for setup instructions, or the
+[monitoring guide](monitoring/README.md) for dashboards and alerts.
 
-## Before using this for anything real
+## Current limitations
 
-This is a learning project, not a real-money exchange. Passwords currently use
-a basic SHA-256 hash, which is not suitable for real user passwords.
+The project is for learning and is not ready for real-money trading. It currently
+hashes passwords with SHA-256, which is unsuitable for storing real user passwords.
 
-Do not reuse the demo credentials. Keep private keys, tokens, passwords and
-Terraform state out of Git. The development cluster uses local-disk storage;
-it needs a proper storage and backup plan before holding important data.
+Do not reuse the demo credentials, and keep private keys, tokens, passwords and
+Terraform state out of Git. The development cluster stores data on local disks.
+It needs a storage and backup plan before you put important data on it.

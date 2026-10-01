@@ -1,6 +1,8 @@
-# Market Simulator
+# Market simulator
 
-`exchange-simulator` creates the living crypto market. Every tick it evolves reference prices for BTC/USD, ETH/USD, and SOL/USD and refreshes system-owned bid/ask liquidity around each price. It never changes user-owned orders.
+`exchange-simulator` updates the reference prices for BTC/USD, ETH/USD and
+SOL/USD on each cycle. It replaces the system's buy and sell orders around those
+prices, leaving user orders alone.
 
 ## Run
 
@@ -10,23 +12,25 @@ cargo run -p exchange-simulator
 
 ## Hosting requirements
 
-- **Network:** outbound PostgreSQL access only; no inbound port or ingress.
-- **Database:** required, shared with the API and matching worker.
-- **Persistence:** no volume/local state required. Reference prices and liquidity are persisted in PostgreSQL.
-- **Scaling:** run one replica initially. Multiple simulators are database-safe but create competing price paths. Partition simulator ownership by instrument before scaling replicas.
-- **Shutdown:** provide a short database transaction grace period.
+- The simulator needs outbound PostgreSQL access. Keep it out of public ingress; its HTTP listener is for private metrics and health checks.
+- Use the same PostgreSQL database as the API and matching worker.
+- Prices and market orders are stored in PostgreSQL. No local state or volume is needed.
+- Start with one simulator. Multiple instances can use the database safely, but each changes the prices independently. Assign different markets to different simulators before adding replicas.
+- Allow a short shutdown grace period for database transactions.
 
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string. |
-| `SIMULATION_SEED` | No | `42` | Integer seed for reproducible price movement on a clean state. |
-| `SIMULATOR_METRICS_BIND` | No | `0.0.0.0:3002` | Private listener exposing `/metrics` and `/healthz`. |
+| `DATABASE_URL` | Yes | Not set | PostgreSQL connection string. |
+| `SIMULATION_SEED` | No | `42` | Integer seed that repeats price movements when starting from a clean state. |
+| `SIMULATOR_METRICS_BIND` | No | `0.0.0.0:3002` | Private HTTP listener for `/metrics` and `/healthz`. |
 | `RUST_LOG` | No | Rust default | JSON log filter. |
 
-The binary loads root `.env` for local development.
+For local development, the simulator loads `.env` from the project root.
 
 ## Operational notes
 
-The simulator bootstraps a system market-maker account with simulated inventory. It writes `market_state` and system orders only; matching and balance settlement remain the matching worker’s responsibility.
+The simulator creates a system market-maker account with simulated inventory.
+It updates `market_state` and system orders. The matching worker handles trades
+and account balance updates.

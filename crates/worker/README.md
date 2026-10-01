@@ -1,6 +1,8 @@
-# Matching Worker
+# Matching worker
 
-`exchange-worker` is the internal execution service. It reads open orders, applies price-time matching, writes fills, updates order state, and settles simulated user balances in PostgreSQL.
+`exchange-worker` reads open orders and matches them by price, then age. It
+records completed trades and updates the orders and simulated account balances
+in PostgreSQL.
 
 ## Run
 
@@ -10,25 +12,30 @@ cargo run -p exchange-worker
 
 ## Hosting requirements
 
-- **Network:** outbound PostgreSQL access only. It has no HTTP port and must not be exposed through ingress.
-- **Database:** PostgreSQL is required and must be the same database used by the API and simulator.
-- **Persistence:** no local disk or volume is required.
-- **Scaling:** safe to scale horizontally. Workers obtain a PostgreSQL advisory lock per instrument, so exactly one worker mutates an instrument’s book at a time. Extra workers can process other instruments or take over after a failure.
-- **Shutdown:** allow the current database transaction to complete or roll back. Transaction locks are released automatically on disconnect.
+- The worker needs outbound PostgreSQL access. Keep it out of public ingress; its HTTP listener is for private metrics and health checks.
+- Use the same PostgreSQL database as the API and simulator.
+- No local disk or volume is needed.
+- You can run multiple workers. A PostgreSQL advisory lock lets only one worker update a market's order book at a time. Other workers can process different markets or take over after a failure.
+- Let the current database transaction finish or roll back during shutdown. PostgreSQL releases its locks when the connection closes.
 
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string. |
-| `WORKER_ID` | Recommended | Generated UUID | Process identifier included in logs. |
-| `WORKER_METRICS_BIND` | No | `0.0.0.0:3001` | Private listener exposing `/metrics` and `/healthz`. |
+| `DATABASE_URL` | Yes | Not set | PostgreSQL connection string. |
+| `WORKER_ID` | Recommended | Generated UUID | Identifies the worker in logs. |
+| `WORKER_METRICS_BIND` | No | `0.0.0.0:3001` | Private HTTP listener for `/metrics` and `/healthz`. |
 | `RUST_LOG` | No | Rust default | JSON log filter. |
 
-The binary loads root `.env` for local development.
+For local development, the worker loads `.env` from the project root.
 
 ## Failure behaviour
 
-If PostgreSQL is unavailable, the worker logs the failure and retries. Orders and fills are transactional, and duplicate fill insertion is guarded by a database unique constraint. A worker restart cannot lose committed trades; another worker can acquire the released instrument lease.
+If PostgreSQL becomes unavailable during matching, the worker logs the error and
+retries. It saves order and trade changes in a transaction, and a database unique
+constraint prevents duplicate trades. Committed trades survive a worker restart.
+Another worker can take the market's lock when it is released.
 
-`/metrics` exposes worker ticks/errors, total fills, user buy/sell fills, and execution-notional summaries. Trade metrics are labelled by instrument only, keeping Prometheus cardinality bounded when the worker fleet scales.
+`/metrics` reports matching cycles and errors, total trades, user buy and sell
+trades, and summaries of trade value. Trade metrics use only instrument labels,
+so adding workers does not create an unbounded number of label values.

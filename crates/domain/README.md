@@ -1,5 +1,9 @@
-# Exchange Domain Library
+# Exchange domain library
 
-`exchange-domain` is a shared Rust library, not a hosted service. It defines order types/statuses, validation, crossing rules, price-time priority, and the pure matching calculation used by the API and matching worker.
+`exchange-domain` contains the shared exchange rules: order types and statuses,
+validation, when prices cross, which orders match first, and the matching
+calculation. The API and worker use this library.
 
-It has no network listener, database connection, environment variables, Docker image, or independent scaling model. It is compiled into the API and worker, ensuring both use exactly the same exchange rules.
+It compiles into the API and worker so both use the same rules. There is no
+separate service to run or scale, and it has no network listener, database
+connection, environment variables or Docker image.

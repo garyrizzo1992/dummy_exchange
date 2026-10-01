@@ -1,6 +1,8 @@
 # Exchange API
 
-`exchange-api` is the public backend for the simulated exchange. It authenticates users, creates simulated accounts, accepts/cancels orders, reserves funds, and exposes balances, fills, instruments, tickers, and order books.
+`exchange-api` handles the public HTTP requests. Users can log in, create
+simulated accounts, place or cancel orders, and check their balances and trades.
+The API reserves funds for orders and provides instruments, tickers and order books.
 
 ## Run
 
@@ -12,12 +14,12 @@ cargo run -p exchange-api
 
 ## Hosting requirements
 
-- **Port:** `API_BIND`, default `127.0.0.1:3000`; set `0.0.0.0:3000` in a container.
-- **Database:** PostgreSQL is required. The API and matching workers must use the same database.
-- **Persistence:** no local disk or volume is required; database data is authoritative.
-- **Ingress:** expose this service through HTTPS-capable ingress or a reverse proxy. The service itself serves HTTP.
-- **Scaling:** stateless and safe to replicate. Ensure PostgreSQL connection capacity matches replica count.
-- **Shutdown:** allow a short graceful shutdown period for in-flight HTTP requests.
+- Listen on `API_BIND`, which defaults to `127.0.0.1:3000`. Use `0.0.0.0:3000` in a container.
+- The API needs PostgreSQL and must share the database with the matching workers.
+- The database holds the data. The API does not need a local disk or volume.
+- Put HTTPS ingress or a reverse proxy in front of the API. The API itself serves HTTP.
+- You can run multiple API replicas because they are stateless. Make sure PostgreSQL can handle their connections.
+- Allow a short shutdown grace period for requests already being processed.
 
 ## Container build
 
@@ -27,32 +29,42 @@ Build from the repository root so Cargo can see the full workspace:
 docker build -f crates/api/Dockerfile -t exchange-api .
 ```
 
-The image listens on port `3000`; supply `DATABASE_URL` and `JWT_SECRET` at runtime. Do not bake `.env` files or secrets into the image.
+The image listens on port `3000`. Supply `DATABASE_URL` and `JWT_SECRET` when
+starting it. Do not include `.env` files or secrets in the image.
 
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 |---|---:|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL connection string. |
-| `JWT_SECRET` | Yes | Development fallback only | Shared high-entropy JWT signing secret; inject securely. |
+| `DATABASE_URL` | Yes | Not set | PostgreSQL connection string. |
+| `JWT_SECRET` | Yes | Development fallback only | Strong shared JWT signing secret; supply it securely. |
 | `API_BIND` | No | `127.0.0.1:3000` | Bind address and port. |
-| `RUST_LOG` | No | Rust default | JSON log filtering, e.g. `info,exchange_api=debug`. |
+| `RUST_LOG` | No | Rust default | Filter JSON logs, for example `info,exchange_api=debug`. |
 
-The binary loads a root `.env` file for local development. Production should inject variables through its secret/configuration mechanism.
+For local development, the API loads `.env` from the project root. In
+production, supply environment variables through your configuration and secret
+management.
 
 ## Endpoints
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /v1/auth/register` | Register and receive a JWT. |
-| `POST /v1/auth/login` | Authenticate and receive a JWT. |
+| `POST /v1/auth/register` | Create an account and receive a JWT. |
+| `POST /v1/auth/login` | Log in and receive a JWT. |
 | `POST /v1/orders` | Submit a market or limit order. |
-| `POST /v1/orders/{id}/cancel` | Cancel an open order and release its reservation. |
-| `GET /v1/orders`, `/v1/fills`, `/v1/accounts/balances` | Authenticated account data. |
-| `GET /v1/instruments` | Tradable simulated markets. |
+| `POST /v1/orders/{id}/cancel` | Cancel an open order and release its reserved funds. |
+| `GET /v1/orders`, `/v1/fills`, `/v1/accounts/balances` | Read account data after logging in. |
+| `GET /v1/instruments` | List simulated markets available for trading. |
 | `GET /v1/markets/{symbol}/ticker`, `/book` | Public market data. |
-| `GET /healthz`, `/readyz`, `/metrics` | Liveness, database readiness, and metrics. |
+| `GET /healthz`, `/readyz`, `/metrics` | Check the process, database connection and metrics. |
 
 ## Operational notes
 
-`/healthz` is a process check. `/readyz` returns 503 when PostgreSQL cannot be reached. Logs are JSON and support `x-request-id`; `/metrics` uses Prometheus exposition format. It exposes HTTP request metrics plus accepted-order, cancelled-order, and submitted-notional metrics labelled only by `instrument`, `side`, and `order_type`. Run `exchange-api migrate` once as a release operation before rolling out API replicas.
+`/healthz` checks whether the API is running. `/readyz` returns 503 if it cannot
+reach PostgreSQL. Logs use JSON and support `x-request-id`.
+
+`/metrics` returns Prometheus-format metrics for HTTP requests, accepted and
+cancelled orders, and the value of submitted orders. Order metrics use only
+`instrument`, `side`, and `order_type` labels.
+
+Run `exchange-api migrate` once before deploying API replicas for a release.
