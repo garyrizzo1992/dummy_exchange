@@ -1,136 +1,146 @@
 # Dummy Exchange
 
-A production-style, simulated electronic exchange in Rust. Authenticated users receive simulated accounts, trade BTC/USD, ETH/USD, and SOL/USD against deterministic replenishing liquidity, and receive durable fills produced by independently runnable matching workers.
+A practice trading exchange built in Rust. You can create an account, place
+orders, and trade BTC, ETH and SOL with pretend dollars.
 
-## Architecture
+Every new account gets $100,000 in simulated money. There is no real trading,
+no real money, and no connection to an external exchange.
 
-```mermaid
-flowchart LR
-  Client -->|REST + JWT| API[Axum API]
-  API -->|transaction| PG[(PostgreSQL)]
-  Simulator[Market simulator] -->|prices + liquidity| PG
-  PG -->|outbox / open book| Worker[Matching workers]
-  Worker -->|fills + quotes| PG
-  API -->|metrics, health| Ops[Observability collector]
-  Redis[(Redis, optional)] -. future cache / rate limits .-> API
-```
+## What runs
 
-PostgreSQL is authoritative for users, accounts, orders, fills, audit data, and the transactional outbox. A worker takes an advisory lock per instrument, so many workers may run but only one mutates a book at a time. This is intentionally straightforward to operate and preserves deterministic price-time matching. The `fills` unique key makes repeat execution harmless.
+The API handles login, orders and account balances. The worker matches buy and
+sell orders. The simulator changes prices and adds orders to the market.
 
-## Request and fill flow
+All three use PostgreSQL. It keeps the account balances, orders and completed
+trades. Redis is included in Docker Compose but is not used by the Rust code yet.
 
-1. The API authenticates a JWT, validates the order, and locks/reserves the needed simulated balance in one transaction.
-2. It writes the order and `order.accepted` outbox event atomically. Reusing a client order ID returns the original order.
-3. A matching worker obtains the instrument lease, locks open orders, price-time matches crossed limit orders, and commits fill records and order states atomically.
-4. Consumers can project the outbox into WebSockets/SSE, notifications, or analytics; this vertical slice leaves transport adapters deliberately separate from the matching invariant.
+Orders with better prices are matched first. If two orders have the same price,
+the older one goes first. Money is reserved when an order is placed, then used
+when it fills or returned when it is cancelled.
 
-## Local development
+## Start with Docker
 
-Requirements: Rust stable and PostgreSQL 16+; Redis is optional for this vertical slice. Create a database, copy `.env.example` to `.env`, and set its `DATABASE_URL`. The processes load the repository `.env` automatically.
+Run these commands from the project folder. You need Docker with Compose.
 
 ```powershell
-Copy-Item .env.example .env
-# edit .env with your local PostgreSQL username/password
-make migrate
-make seed
-make run-api
-# another terminal
-make run-worker
-# third terminal
-make run-simulator
-```
+# Start the database and wait for it to be ready.
+docker compose up -d --wait postgres
 
-Windows users without `make` can run `cargo run -p exchange-api`, `cargo run -p exchange-worker`, `cargo run -p exchange-simulator`, and `sqlx migrate run --source migrations` directly.
+# Build the API and create the database tables.
+docker compose run --build --rm api migrate
 
-### Local containers
-
-Start the full local stack with Docker Compose:
-
-```powershell
+# Start the rest of the project.
 docker compose up --build
 ```
 
-The following host endpoints are available after the stack starts:
+The migrations also add the three markets and their starting prices.
 
-| Component | URL / connection | Notes |
-|---|---|---|
-| Exchange API | http://localhost:3000 | Public REST API. |
-| API health | http://localhost:3000/healthz | Process liveness. |
-| API readiness | http://localhost:3000/readyz | Verifies PostgreSQL connectivity. |
-| API metrics | http://localhost:3000/metrics | Prometheus exposition endpoint. |
-| Prometheus | http://localhost:9090 | Targets, queries, and alert-rule state. |
-| Grafana | http://localhost:3001 | Local login: `admin` / `admin`. |
-| PostgreSQL | `postgresql://postgres:password@localhost:5432/dummy_exchange` | Local development database only. |
-| Redis | `redis://localhost:6379/0` | Optional cache/pub-sub dependency. |
+Open the API at http://localhost:3000. Prometheus is at
+http://localhost:9090 and Grafana is at http://localhost:3001.
+The local Grafana login is `admin` / `admin`.
 
-The matching workers, simulator, and exporter metrics endpoints remain internal to the Compose network. The Compose credentials and JWT secret are for local development only. See the [monitoring guide](monitoring/README.md) for scraped targets, dashboard, and alerts. Scale matching workers without naming individual containers:
+To stop the services without deleting the database:
 
 ```powershell
-docker compose up --scale worker=3
+docker compose down
 ```
 
-## CI and Docker Hub images
+The passwords in Compose are only for local testing.
 
-The GitHub Actions workflow at `.github/workflows/application.yml` runs formatting, Clippy, tests, a release build, Helm validation, and Dockerfile builds. Pull requests verify images without publishing. Application changes merged to `main` publish all three images to Docker Hub:
+## Run the Rust code directly
 
-| Service | Docker Hub repository |
-|---|---|
-| API | `<DOCKERHUB_USERNAME>/dummy-exchange-api` |
-| Matching worker | `<DOCKERHUB_USERNAME>/dummy-exchange-worker` |
-| Market simulator | `<DOCKERHUB_USERNAME>/dummy-exchange-simulator` |
+You need Rust and PostgreSQL 16 or newer. Create a database first.
 
-Before the first publishing run, add these **repository secrets** in GitHub under **Settings → Secrets and variables → Actions**:
+Copy the settings file:
 
-- `DOCKERHUB_USERNAME`: your Docker Hub namespace.
-- `DOCKERHUB_TOKEN`: a Docker Hub access token with write access to that namespace; do not use your account password.
-
-Images receive a `sha-<commit>` tag. The promotion job commits their immutable
-digests to `values-dev.yaml`, which Argo CD reconciles. See [continuous delivery](docs/cicd.md)
-for infrastructure workflows and setup.
-
-## Kubernetes GitOps
-
-The [Kubernetes deployment guide](deploy/README.md) includes a self-contained Helm chart and an Argo CD Application for Minikube. The same chart works on any Argo CD-managed cluster by using environment-specific values and changing the Application destination.
-
-### API examples
-
-```bash
-curl -X POST http://127.0.0.1:3000/v1/auth/register -H 'content-type: application/json' -d '{"email":"demo@example.test","password":"not-a-real-password"}'
-curl -X POST http://127.0.0.1:3000/v1/orders -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"client_order_id":"demo-001","instrument":"BTC-USD","side":"buy","order_type":"limit","quantity":"0.01","limit_price":"64000"}'
-curl http://127.0.0.1:3000/v1/orders -H "authorization: Bearer $TOKEN"
-curl http://127.0.0.1:3000/v1/instruments
-curl http://127.0.0.1:3000/v1/markets/BTC-USD/book
+```powershell
+Copy-Item .env.example .env
 ```
 
-## Application operations
+Set `DATABASE_URL` in `.env` to your PostgreSQL connection string.
+Set `JWT_SECRET` to your own signing secret. Keep `.env` out of Git.
 
-`GET /healthz` is process liveness, `GET /readyz` verifies database reachability, and `GET /metrics` is Prometheus-compatible. Logs are JSON and HTTP requests receive/propagate `x-request-id`. Configuration is exclusively environment based. OpenTelemetry dependencies are included for exporter wiring by the deployment environment; this repository intentionally contains no observability-stack configuration.
+Create the tables:
 
-## Decisions and trade-offs
-
-- [Database outbox ADR](docs/adr/0001-database-outbox.md): avoids a broker for one-instrument local development while retaining replay semantics.
-- PostgreSQL advisory locks provide horizontal worker safety without a central coordinator. It is a sensible starting point; high-volume multi-instrument deployments can move book ownership to partitioned streams.
-- Redis is optional and non-authoritative: suitable later for rate limiting, sessions, cache, and fan-out, never for balances or execution truth.
-- Password hashing is deliberately kept minimal in this demo vertical slice and must be replaced with Argon2id before any non-simulated use. JWT signing is symmetric today but the API boundary is OIDC-ready.
-
-## Verification and failure modes
-
-```bash
-make test
-make lint
-make bench BASE_URL=http://127.0.0.1:3000 TOKEN=...
+```powershell
+cargo run -p exchange-api -- migrate
 ```
 
-Matching invariants are unit tested in the domain crate. The [failure-mode playbook](docs/failure-modes.md) covers restart, duplicate event, dependency loss, and partial-processing drills. Add API-to-database integration tests against an ephemeral PostgreSQL database as the next extension.
+Then run these commands in three separate terminals:
 
-## CV highlights
+```powershell
+cargo run -p exchange-api
+cargo run -p exchange-worker
+cargo run -p exchange-simulator
+```
 
-- Rust workspace boundaries that separate exchange rules, public API, and scalable workers.
-- Transactional balance reservation, idempotent order submission, price-time priority, and duplicate-fill protection.
-- Operationally aware endpoints, structured logs, metrics, migrations, seed data, a benchmark, and explicit reliability trade-offs.
+Run them from the project folder so each service can load `.env`.
 
-## Deployment assumptions
+## Try it
 
-The deployment environment supplies PostgreSQL, optional Redis, secrets, network ingress, and telemetry collectors. Workers are launched independently with a unique `WORKER_ID` and scaled externally. Local Compose, monitoring, and Docker Hub publishing artefacts are included; production orchestration remains deployment-specific.
+This PowerShell example creates a demo account and uses its login token to
+read the account balance. Use a different email if the account already exists.
 
-Container and platform implementers should use the detailed [API service](docs/hosting/api-service.md), [matching worker](docs/hosting/matching-worker.md), [market simulator](docs/hosting/market-simulator.md), and [dependency](docs/hosting/dependencies.md) hosting contracts.
+```powershell
+$account = @{
+    email = "demo@example.test"
+    password = "local-demo-only"
+} | ConvertTo-Json
+
+$login = Invoke-RestMethod -Method Post -Uri "http://localhost:3000/v1/auth/register" -ContentType "application/json" -Body $account
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+
+Invoke-RestMethod -Uri "http://localhost:3000/v1/accounts/balances" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:3000/v1/instruments"
+```
+
+The [API guide](crates/api/README.md) lists the routes for placing orders,
+cancelling orders and reading trades.
+
+## Find your way around
+
+- `crates/domain`: order types, validation and matching rules. Start here.
+- `crates/api`: HTTP routes, authentication and database calls.
+- `crates/worker`: matching orders and updating balances.
+- `crates/simulator`: generating prices and market orders.
+- `migrations`: database tables and changes.
+- `provisioning`: Terraform and Ansible for the OCI Kubernetes cluster.
+- `deploy`: the Helm chart and Argo CD configuration.
+- `monitoring`: Prometheus, Grafana and their settings.
+- `.github/workflows`: build, deployment and infrastructure checks.
+
+## Check your changes
+
+```powershell
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+```
+
+The tests cover order validation and matching rules. They do not yet test the
+full application against a running database.
+
+The API also provides `/healthz` to check that it is running, `/readyz` to
+check its database connection, and `/metrics` for Prometheus.
+
+## Deployment
+
+GitHub Actions checks application changes and builds the images. On `main`,
+it publishes them to Docker Hub and updates the development image versions in
+Git. Argo CD reads those versions and updates Kubernetes.
+
+Terraform creates the OCI infrastructure. Ansible sets up Kubernetes.
+Application secrets are read from OCI Vault rather than stored in Git.
+
+The setup details are in the [pipeline guide](docs/cicd.md) and
+[deployment guide](deploy/README.md). Dashboards and alerts are covered in
+the [monitoring guide](monitoring/README.md).
+
+## Before using this for anything real
+
+This is a learning project, not a real-money exchange. Passwords currently use
+a basic SHA-256 hash, which is not suitable for real user passwords.
+
+Do not reuse the demo credentials. Keep private keys, tokens, passwords and
+Terraform state out of Git. The development cluster uses local-disk storage;
+it needs a proper storage and backup plan before holding important data.

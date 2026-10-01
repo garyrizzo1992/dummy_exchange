@@ -1,5 +1,9 @@
+# Check the apps and Helm chart. Pull requests only test and build images.
+# On main, publish the images and update their versions in Git.
+# Argo CD then picks up the change and deploys it to dev.
 name: Test, publish, and deploy applications
 
+# Check pull requests. Publish images and update dev only from main.
 on:
   pull_request:
     branches: [main]
@@ -18,18 +22,22 @@ on:
       - crates/**
       - migrations/**
       - deploy/helm/**
+      # The bot updates this file after publishing. Don't start another build.
       - '!deploy/helm/dummy-exchange/values-dev.yaml'
       - .github/workflows/application.yml
-  workflow_dispatch:
+  workflow_dispatch: # Also lets us start a run from the Actions tab.
 
+# Jobs can read the repo. Only the promotion job below can write to it.
 permissions:
   contents: read
 
 concurrency:
   group: application-${{ github.ref }}
+  # Keep the latest run for each branch or pull request.
   cancel-in-progress: true
 
 jobs:
+  # Check the Rust code and Helm chart before building images.
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -48,6 +56,7 @@ jobs:
       - run: helm lint deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml
       - run: helm template exchange deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml > /dev/null
 
+  # For pull requests, build all three images in parallel without uploading them.
   verify-images:
     if: github.event_name == 'pull_request'
     needs: test
@@ -68,11 +77,13 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: false
 
+  # After tests pass on main, upload the images to Docker Hub.
   publish-images:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # Pass the exact image versions to the promotion job.
     outputs:
       api_digest: ${{ steps.api.outputs.digest }}
       worker_digest: ${{ steps.worker.outputs.digest }}
@@ -91,7 +102,9 @@ jobs:
           context: .
           file: crates/api/Dockerfile
           push: true
+          # The tag points back to the source commit.
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-api:sha-${{ github.sha }}
+          # Include how the image was built and what software it contains.
           provenance: mode=max
           sbom: true
       - id: worker
@@ -113,6 +126,8 @@ jobs:
           provenance: mode=max
           sbom: true
 
+  # Record the new images in Git. Argo CD handles the Kubernetes rollout.
+  # This job doesn't wait for that rollout to finish; check Argo CD afterwards.
   promote-dev:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: publish-images
@@ -132,6 +147,7 @@ jobs:
           WORKER_DIGEST: ${{ needs.publish-images.outputs.worker_digest }}
           SIMULATOR_DIGEST: ${{ needs.publish-images.outputs.simulator_digest }}
         run: |
+          # Digests pin the exact images, even if someone changes a tag later.
           yq -i '.imageRegistry = strenv(IMAGE_REGISTRY)' deploy/helm/dummy-exchange/values-dev.yaml
           yq -i '.api.image.digest = strenv(API_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
           yq -i '.worker.image.digest = strenv(WORKER_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
@@ -141,5 +157,6 @@ jobs:
           git config user.name 'dummy-exchange deployment bot'
           git config user.email 'deployment-bot@users.noreply.github.com'
           git add deploy/helm/dummy-exchange/values-dev.yaml
+          # Commit only if the desired image versions have changed.
           git diff --cached --quiet || git commit -m 'deploy(dev): promote ${{ github.sha }}'
           git push

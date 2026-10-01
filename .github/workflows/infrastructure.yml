@@ -1,5 +1,9 @@
+# Check Terraform on pull requests. On main, plan and apply the changes
+# from our private OCI runner. Terraform also runs Ansible when the node
+# setup changes. This workflow doesn't deploy the apps; Argo CD does that.
 name: Validate and apply infrastructure
 
+# Run when the infrastructure, node setup or Argo CD setup changes.
 on:
   pull_request:
     branches: [main]
@@ -13,16 +17,19 @@ on:
       - provisioning/**
       - deploy/argocd/dummy-exchange-dev.yaml
       - .github/workflows/infrastructure.yml
-  workflow_dispatch:
+  workflow_dispatch: # Use the Actions tab to run it manually.
 
 permissions:
   contents: read
 
 concurrency:
+  # Drift checks use the same group, so they don't overlap with an apply.
   group: terraform-dev
+  # Let an active run finish instead of cancelling it halfway through.
   cancel-in-progress: false
 
 jobs:
+  # Pull requests stop here. This job doesn't need OCI credentials or state.
   validate:
     runs-on: ubuntu-24.04
     defaults:
@@ -33,11 +40,14 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.16.4
+          # Run Terraform directly; the optional wrapper needs system Node.js.
           terraform_wrapper: false
       - run: terraform fmt -check -recursive
+      # Download providers without connecting to the remote state bucket.
       - run: terraform init -backend=false
       - run: terraform validate
 
+  # Only trusted main code runs on our private OCI runner and changes resources.
   apply:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: validate
@@ -49,10 +59,14 @@ jobs:
     env:
       TF_VAR_tenancy_ocid: ${{ vars.OCI_TENANCY_OCID }}
       OCI_TENANCY_OCID: ${{ vars.OCI_TENANCY_OCID }}
+      # OCI recognizes this VM, so we don't need an API private key in GitHub.
+      # These settings cover the provider, state backend and OCI CLI.
       TF_VAR_oci_auth: InstancePrincipal
       OCI_auth: InstancePrincipal
       OCI_CLI_AUTH: instance_principal
+      # The runner can reach the nodes directly; no Bastion session is needed.
       SSH_CONNECTION_MODE: private
+      # Keep Bastion access tied to the operator's CIDRs, not the runner's IP.
       TF_VAR_bastion_client_cidrs: ${{ vars.BASTION_CLIENT_CIDRS }}
       TF_VAR_image_ocid: ${{ vars.OCI_IMAGE_OCID }}
       TF_VAR_ssh_authorized_keys: ${{ secrets.CI_SSH_PUBLIC_KEY }}
@@ -68,17 +82,23 @@ jobs:
         env:
           CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
         run: |
+          # Make the runner's OCI and Ansible commands available to this job.
           echo /usr/local/bin >> "$GITHUB_PATH"
+          # Remove Windows line endings and keep the key in a temporary file.
           printf '%s\n' "$CI_SSH_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/ansible_id_ed25519"
           chmod 600 "$RUNNER_TEMP/ansible_id_ed25519"
           ssh-keygen -y -f "$RUNNER_TEMP/ansible_id_ed25519" > "$RUNNER_TEMP/ansible_id_ed25519.pub"
           echo "SSH_KEY_PATH=$RUNNER_TEMP/ansible_id_ed25519" >> "$GITHUB_ENV"
           chmod +x "$GITHUB_WORKSPACE/provisioning/ansible/ansible-playbook-wrapper.sh"
+      # Connect to the shared OCI state bucket and install the locked providers.
       - run: terraform init
+      # Save the plan, then apply that exact plan without another approval step.
+      # Terraform runs Ansible when the nodes or tracked setup files change.
       - name: Plan the trusted main revision
         run: terraform plan -var-file=envs/dev.tfvars -out="$RUNNER_TEMP/dev.tfplan" -parallelism=1 -no-color
       - name: Apply the saved plan
         run: terraform apply -auto-approve -parallelism=1 -no-color "$RUNNER_TEMP/dev.tfplan"
       - name: Remove the job SSH key
+        # Try cleanup even after a failure. An offline runner can't run this step.
         if: always()
         run: rm -f "$RUNNER_TEMP/ansible_id_ed25519" "$RUNNER_TEMP/ansible_id_ed25519.pub" "$RUNNER_TEMP/dev.tfplan"

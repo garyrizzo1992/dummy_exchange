@@ -1,19 +1,26 @@
+# Check on weekdays whether OCI still matches our Terraform configuration.
+# If changes or errors are found, the run fails so we can review the output.
+# This workflow only checks; it doesn't apply or fix anything.
 name: Check infrastructure drift
 
+# Check whether OCI still matches Terraform. This workflow never applies changes.
 on:
   schedule:
+    # Monday to Friday at 04:17 UTC.
     - cron: '17 4 * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # We can also check manually from the Actions tab.
 
 permissions:
   contents: read
 
 concurrency:
+  # Use the same group as infrastructure runs so plans and applies don't overlap.
   group: terraform-dev
   cancel-in-progress: false
 
 jobs:
   drift:
+    # Use main as the reference, even when starting a check manually.
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, oci-dev]
     environment: dev
@@ -22,6 +29,7 @@ jobs:
         working-directory: provisioning/terraform
     env:
       TF_VAR_tenancy_ocid: ${{ vars.OCI_TENANCY_OCID }}
+      # Use the OCI runner's identity for the provider and state bucket.
       TF_VAR_oci_auth: InstancePrincipal
       OCI_auth: InstancePrincipal
       TF_VAR_bastion_client_cidrs: ${{ vars.BASTION_CLIENT_CIDRS }}
@@ -38,7 +46,10 @@ jobs:
       - run: terraform init
       - name: Fail when drift is detected
         run: |
+          # Read Terraform's exit code ourselves instead of stopping immediately.
           set +e
           terraform plan -detailed-exitcode -var-file=envs/dev.tfvars -parallelism=1 -no-color
           result=$?
+          # 0 means no changes. 1 means an error. 2 means changes were found.
+          # Only 0 passes; read the plan output if the job fails.
           test "$result" -eq 0

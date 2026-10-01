@@ -1,3 +1,5 @@
+//! Matches buy and sell orders, then updates balances in the same transaction.
+
 use axum::{Router, extract::State, routing::get};
 use exchange_domain::{BookOrder, Side, match_taker};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -20,43 +22,57 @@ async fn main() -> anyhow::Result<()> {
             warn!(%error, "worker metrics server stopped");
         }
     });
-    let db = PgPool::connect(&env::var("DATABASE_URL")?).await?;
-    let worker = env::var("WORKER_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
+    let database_url = env::var("DATABASE_URL")?;
+    let db = PgPool::connect(&database_url).await?;
+    let worker_id = env::var("WORKER_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
     loop {
-        if let Err(error) = tick(&db, &worker).await {
+        if let Err(error) = tick(&db, &worker_id).await {
             metrics::counter!("matching_worker_errors_total").increment(1);
             warn!(%error,"worker tick failed")
-        };
+        }
         sleep(Duration::from_millis(100)).await;
     }
 }
-async fn tick(db: &PgPool, worker: &str) -> anyhow::Result<()> {
+
+async fn tick(db: &PgPool, worker_id: &str) -> anyhow::Result<()> {
     metrics::counter!("matching_worker_ticks_total").increment(1);
     let instruments = sqlx::query("SELECT instrument FROM market_state ORDER BY instrument")
         .fetch_all(db)
         .await?;
     for row in instruments {
         let instrument: String = row.get("instrument");
-        if let Err(error) = tick_instrument(db, worker, &instrument).await {
+        if let Err(error) = tick_instrument(db, worker_id, &instrument).await {
             metrics::counter!("matching_instrument_errors_total", "instrument" => instrument.clone()).increment(1);
             warn!(%error,%instrument,"instrument matching failed")
-        };
+        }
     }
     Ok(())
 }
-async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow::Result<()> {
+
+async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyhow::Result<()> {
     let mut tx = db.begin().await?;
-    if !sqlx::query("SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked")
+    // Only one worker may match this instrument at a time.
+    let lock = sqlx::query("SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked")
         .bind(instrument)
         .fetch_one(&mut *tx)
-        .await?
-        .get::<bool, _>("locked")
-    {
+        .await?;
+    let locked: bool = lock.get("locked");
+    if !locked {
         tx.rollback().await?;
         return Ok(());
     }
-    let rows=sqlx::query("SELECT id,side,limit_price,remaining,sequence FROM orders WHERE instrument=$1 AND status IN ('open','partially_filled') AND limit_price IS NOT NULL ORDER BY sequence FOR UPDATE").bind(instrument).fetch_all(&mut *tx).await?;
-    let (mut buys, mut sells) = (vec![], vec![]);
+    let rows = sqlx::query(
+        "SELECT id,side,limit_price,remaining,sequence
+         FROM orders
+         WHERE instrument=$1 AND status IN ('open','partially_filled') AND limit_price IS NOT NULL
+         ORDER BY sequence
+         FOR UPDATE",
+    )
+    .bind(instrument)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut buys = Vec::new();
+    let mut sells = Vec::new();
     for row in rows {
         let order = BookOrder {
             id: row.get("id"),
@@ -81,7 +97,19 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
     let mut fill_notionals = Vec::new();
     for mut buy in buys {
         for fill in match_taker(&mut buy, &mut sells) {
-            let inserted=sqlx::query("INSERT INTO fills(maker_order_id,taker_order_id,instrument,price,quantity) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id").bind(fill.maker_id).bind(fill.taker_id).bind(instrument).bind(fill.price).bind(fill.quantity).fetch_optional(&mut *tx).await?;
+            let inserted = sqlx::query(
+                "INSERT INTO fills(maker_order_id,taker_order_id,instrument,price,quantity)
+                 VALUES($1,$2,$3,$4,$5)
+                 ON CONFLICT DO NOTHING
+                 RETURNING id",
+            )
+            .bind(fill.maker_id)
+            .bind(fill.taker_id)
+            .bind(instrument)
+            .bind(fill.price)
+            .bind(fill.quantity)
+            .fetch_optional(&mut *tx)
+            .await?;
             if inserted.is_some() {
                 let (buy_is_system, sell_is_system) = apply_fill(
                     &mut tx,
@@ -114,10 +142,11 @@ async fn tick_instrument(db: &PgPool, worker: &str, instrument: &str) -> anyhow:
             metrics::histogram!("matching_fill_notional_usd", "instrument" => instrument.to_owned())
                 .record(notional);
         }
-        info!(%worker,%instrument,fills,"orders matched")
-    };
+        info!(worker=%worker_id,%instrument,fills,"orders matched")
+    }
     Ok(())
 }
+
 async fn serve_metrics(handle: PrometheusHandle, bind: String) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/metrics", get(render_metrics))
@@ -127,9 +156,11 @@ async fn serve_metrics(handle: PrometheusHandle, bind: String) -> anyhow::Result
     axum::serve(listener, app).await?;
     Ok(())
 }
+
 async fn render_metrics(State(handle): State<PrometheusHandle>) -> String {
     handle.render()
 }
+
 async fn apply_fill(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     sell_id: Uuid,
@@ -137,6 +168,7 @@ async fn apply_fill(
     price: Decimal,
     quantity: Decimal,
 ) -> anyhow::Result<(bool, bool)> {
+    // SQLx needs the connection inside the borrowed transaction: &mut **tx.
     let buy =
         sqlx::query("SELECT user_id,instrument,limit_price,is_system FROM orders WHERE id=$1")
             .bind(buy_id)
@@ -154,10 +186,37 @@ async fn apply_fill(
     let reserved_price: Decimal = buy.get("limit_price");
     let reserved = quantity * reserved_price;
     let spent = quantity * price;
-    sqlx::query("UPDATE orders SET remaining=GREATEST(remaining-$1,0),status=CASE WHEN remaining-$1<=0 THEN 'filled' ELSE 'partially_filled' END WHERE id=$2").bind(quantity).bind(buy_id).execute(&mut **tx).await?;
-    sqlx::query("UPDATE orders SET remaining=GREATEST(remaining-$1,0),status=CASE WHEN remaining-$1<=0 THEN 'filled' ELSE 'partially_filled' END WHERE id=$2").bind(quantity).bind(sell_id).execute(&mut **tx).await?;
-    if !buy.get::<bool, _>("is_system") {
-        sqlx::query("UPDATE accounts SET reserved=reserved-$1,available=available+$2 WHERE user_id=$3 AND currency=$4").bind(reserved).bind(reserved-spent).bind(buyer).bind(quote).execute(&mut **tx).await?;
+    let buy_is_system: bool = buy.get("is_system");
+    let sell_is_system: bool = sell.get("is_system");
+
+    // A fill reduces both orders. A fully used order becomes "filled".
+    sqlx::query(
+        "UPDATE orders
+         SET remaining=GREATEST(remaining-$1,0),status=CASE WHEN remaining-$1<=0 THEN 'filled' ELSE 'partially_filled' END
+         WHERE id=$2",
+    )
+        .bind(quantity)
+        .bind(buy_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query(
+        "UPDATE orders
+         SET remaining=GREATEST(remaining-$1,0),status=CASE WHEN remaining-$1<=0 THEN 'filled' ELSE 'partially_filled' END
+         WHERE id=$2",
+    )
+        .bind(quantity)
+        .bind(sell_id)
+        .execute(&mut **tx)
+        .await?;
+    // Return any unused reserved dollars and credit the purchased cryptocurrency.
+    if !buy_is_system {
+        sqlx::query("UPDATE accounts SET reserved=reserved-$1,available=available+$2 WHERE user_id=$3 AND currency=$4")
+        .bind(reserved)
+        .bind(reserved-spent)
+        .bind(buyer)
+        .bind(quote)
+        .execute(&mut **tx)
+        .await?;
         sqlx::query("UPDATE accounts SET available=available+$1 WHERE user_id=$2 AND currency=$3")
             .bind(quantity)
             .bind(buyer)
@@ -165,7 +224,8 @@ async fn apply_fill(
             .execute(&mut **tx)
             .await?;
     }
-    if !sell.get::<bool, _>("is_system") {
+    // Release the seller's reserved cryptocurrency and credit the sale proceeds.
+    if !sell_is_system {
         sqlx::query("UPDATE accounts SET reserved=reserved-$1 WHERE user_id=$2 AND currency=$3")
             .bind(quantity)
             .bind(seller)
@@ -179,5 +239,5 @@ async fn apply_fill(
             .execute(&mut **tx)
             .await?;
     }
-    Ok((buy.get("is_system"), sell.get("is_system")))
+    Ok((buy_is_system, sell_is_system))
 }
