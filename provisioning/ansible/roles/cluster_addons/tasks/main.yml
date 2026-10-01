@@ -1,0 +1,105 @@
+---
+# Calico supplies the Kubernetes pod network. It is pinned rather than fetched
+# from a moving branch: https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart
+- name: Check whether Calico is installed
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get daemonset calico-node -n calico-system
+  register: calico
+  changed_when: false
+  failed_when: false
+
+- name: Install Calico
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.2/manifests/calico.yaml
+  when: calico.rc != 0
+
+- name: Wait for all Kubernetes nodes to become ready
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf wait --for=condition=Ready nodes --all --timeout=10m
+  changed_when: false
+
+# Pinned Argo CD bootstrap manifest:
+# https://argo-cd.readthedocs.io/en/stable/getting_started/
+- name: Check whether the Argo CD namespace exists
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get namespace argocd
+  register: argocd_namespace
+  changed_when: false
+  failed_when: false
+
+- name: Create the Argo CD namespace
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace argocd
+  when: argocd_namespace.rc != 0
+
+- name: Check whether Argo CD is installed
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get deployment argocd-server -n argocd
+  register: argocd
+  changed_when: false
+  failed_when: false
+
+- name: Install Argo CD
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.3/manifests/install.yaml
+  when: argocd.rc != 0
+
+- name: Wait for Argo CD
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/argocd-server -n argocd --timeout=10m
+  changed_when: false
+
+- name: Check whether the application namespace exists
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get namespace dummy-exchange
+  register: application_namespace
+  changed_when: false
+  failed_when: false
+
+- name: Create the application namespace
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace dummy-exchange
+  when: application_namespace.rc != 0
+
+# This generates initial development-only credentials outside Git. Replace this
+# bootstrap secret with OCI Vault plus External Secrets before a shared deploy.
+- name: Check whether the application secret exists
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get secret dummy-exchange-secrets -n dummy-exchange
+  register: application_secret
+  changed_when: false
+  failed_when: false
+
+- name: Generate the development database password
+  ansible.builtin.command: openssl rand -hex 32
+  register: postgres_password
+  no_log: true
+  when: application_secret.rc != 0
+
+- name: Generate the development JWT secret
+  ansible.builtin.command: openssl rand -hex 32
+  register: jwt_secret
+  no_log: true
+  when: application_secret.rc != 0
+
+- name: Generate the development Grafana password
+  ansible.builtin.command: openssl rand -hex 32
+  register: grafana_admin_password
+  no_log: true
+  when: application_secret.rc != 0
+
+- name: Create the development application secret
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - -n
+      - dummy-exchange
+      - create
+      - secret
+      - generic
+      - dummy-exchange-secrets
+      - "--from-literal=postgres-password={{ postgres_password.stdout }}"
+      - "--from-literal=jwt-secret={{ jwt_secret.stdout }}"
+      - "--from-literal=grafana-admin-password={{ grafana_admin_password.stdout }}"
+  no_log: true
+  when: application_secret.rc != 0
+
+- name: Copy the Argo CD development application
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../deploy/argocd/dummy-exchange-dev.yaml"
+    dest: /tmp/dummy-exchange-dev.yaml
+    mode: '0644'
+
+- name: Apply the Argo CD development application
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/dummy-exchange-dev.yaml

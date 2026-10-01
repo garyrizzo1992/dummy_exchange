@@ -28,6 +28,11 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
@@ -108,6 +113,11 @@ metadata:
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
@@ -148,6 +158,9 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }
             initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
 ---
@@ -175,6 +188,11 @@ metadata:
     app.kubernetes.io/component: simulator
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "dummy-exchange.selectorLabels" . | nindent 6 }}
@@ -217,5 +235,8 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }
             initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.simulator.resources | nindent 12 }}

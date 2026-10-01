@@ -57,7 +57,10 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
     let db = PgPool::connect(&env::var("DATABASE_URL")?).await?;
-    sqlx::migrate!("../../migrations").run(&db).await?;
+    if env::args().nth(1).as_deref() == Some("migrate") {
+        sqlx::migrate!("../../migrations").run(&db).await?;
+        return Ok(());
+    }
     let metrics = PrometheusBuilder::new().install_recorder()?;
     let app = App {
         db,

@@ -1,0 +1,5 @@
+---
+- name: Join the Kubernetes cluster
+  ansible.builtin.command: "{{ kubeadm_join_command }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf

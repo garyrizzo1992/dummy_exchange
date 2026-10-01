@@ -1,0 +1,50 @@
+name: Check infrastructure drift
+
+on:
+  schedule:
+    - cron: '17 4 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-24.04
+    environment: dev
+    defaults:
+      run:
+        working-directory: provisioning/terraform
+    env:
+      TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_private_key_path: ${{ runner.temp }}/oci_api_key.pem
+      TF_VAR_ssh_authorized_keys: ${{ secrets.CI_SSH_PUBLIC_KEY }}
+      TF_VAR_ansible_runner: linux
+      TF_VAR_ansible_wsl_directory: ${{ github.workspace }}/provisioning/ansible
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+      - name: Configure OCI authentication
+        env:
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+        run: |
+          install -d -m 700 "$HOME/.oci"
+          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci_api_key.pem"
+          chmod 600 "$RUNNER_TEMP/oci_api_key.pem"
+          printf '[DEFAULT]\ntenancy=%s\nuser=%s\nfingerprint=%s\nkey_file=%s\nregion=eu-milan-1\n' "$OCI_TENANCY_OCID" "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$RUNNER_TEMP/oci_api_key.pem" > "$HOME/.oci/config"
+      - run: terraform init
+      - name: Fail when drift is detected
+        run: |
+          set +e
+          terraform plan -detailed-exitcode -var-file=envs/dev.tfvars -parallelism=1 -no-color
+          result=$?
+          test "$result" -eq 0

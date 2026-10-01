@@ -1,0 +1,19 @@
+# This file is the desired state for the OCI development cluster. The image
+# digests are replaced by the GitHub Actions promotion workflow after an image
+# is successfully built and tested.
+imagePullPolicy: IfNotPresent
+
+api:
+  image:
+    tag: main
+    digest: ""
+
+worker:
+  image:
+    tag: main
+    digest: ""
+
+simulator:
+  image:
+    tag: main
+    digest: ""

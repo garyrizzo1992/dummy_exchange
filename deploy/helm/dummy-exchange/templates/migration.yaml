@@ -1,0 +1,44 @@
+{{- if .Values.migrations.enabled }}
+{{- $name := include "dummy-exchange.fullname" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-migrate
+  labels:
+    {{- include "dummy-exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "dummy-exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: {{ include "dummy-exchange.applicationImage" (dict "root" . "image" .Values.api.image) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args: ["migrate"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities: { drop: ["ALL"] }
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "existingSecret is required" .Values.existingSecret }}
+                  key: {{ .Values.secretKeys.postgresPassword }}
+            - name: DATABASE_URL
+              value: postgresql://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@{{ $name }}-postgres:5432/{{ .Values.postgres.database }}
+{{- end }}

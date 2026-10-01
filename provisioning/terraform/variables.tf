@@ -42,8 +42,56 @@ variable "application" {
 }
 
 variable "image_ocid" {
-  description = "ARM64-compatible OCI image OCID for the control-plane instance."
+  description = "x86_64-compatible OCI image OCID for the Kubernetes instances."
   type        = string
+}
+
+variable "instance_shape" {
+  description = "Paid OCI flexible VM shape used by the Kubernetes instances."
+  type        = string
+  default     = "VM.Standard.E5.Flex"
+}
+
+variable "ansible_wsl_directory" {
+  description = "Path to the Ansible directory used by Terraform's Ansible action."
+  type        = string
+  default     = "/mnt/c/Users/Gary/Documents/dummy_exchange/provisioning/ansible"
+}
+
+variable "ansible_runner" {
+  description = "Operating system of the host running Terraform: windows or linux."
+  type        = string
+  default     = "windows"
+
+  validation {
+    condition     = contains(["windows", "linux"], var.ansible_runner)
+    error_message = "ansible_runner must be windows or linux."
+  }
+}
+
+
+variable "control_plane_ocpus" {
+  description = "OCPUs for the kubeadm control-plane VM."
+  type        = number
+  default     = 2
+}
+
+variable "control_plane_memory_in_gbs" {
+  description = "Memory in GB for the kubeadm control-plane VM."
+  type        = number
+  default     = 8
+}
+
+variable "worker_ocpus" {
+  description = "OCPUs for the Kubernetes worker VM."
+  type        = number
+  default     = 2
+}
+
+variable "worker_memory_in_gbs" {
+  description = "Memory in GB for the Kubernetes worker VM."
+  type        = number
+  default     = 8
 }
 
 variable "ssh_authorized_keys" {

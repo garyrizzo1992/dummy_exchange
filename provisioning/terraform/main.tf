@@ -118,9 +118,9 @@ data "http" "terraform_runner_ip" {
 }
 resource "oci_bastion_bastion" "bastion" {
   #Required
-  bastion_type     = "STANDARD"
-  compartment_id   = oci_identity_compartment.dummy_exchange.id
-  target_subnet_id = oci_core_subnet.dummy_exchange_priv.id
+  bastion_type               = "STANDARD"
+  compartment_id             = oci_identity_compartment.dummy_exchange.id
+  target_subnet_id           = oci_core_subnet.dummy_exchange_priv.id
   max_session_ttl_in_seconds = 10800
 
   #Optional
@@ -129,12 +129,12 @@ resource "oci_bastion_bastion" "bastion" {
   name                         = "${var.application}-${var.environment}-bastion"
 }
 
-# A lightweight, ARM64 control-plane VM for the two-node Always Free environment.
+# Paid x86_64 VMs sized for a kubeadm control plane and application workloads.
 resource "oci_core_instance" "control_plane" {
   availability_domain = data.oci_identity_availability_domains.available.availability_domains[0].name
   compartment_id      = oci_identity_compartment.dummy_exchange.id
   display_name        = "${var.application}-${var.environment}-control-plane"
-  shape               = "VM.Standard.A1.Flex"
+  shape               = var.instance_shape
 
   agent_config {
     plugins_config {
@@ -144,12 +144,12 @@ resource "oci_core_instance" "control_plane" {
   }
 
   create_vnic_details {
-    subnet_id        = oci_core_subnet.dummy_exchange_priv.id
-    assign_public_ip = false
+    subnet_id                 = oci_core_subnet.dummy_exchange_priv.id
+    assign_public_ip          = false
     assign_private_dns_record = true
-    display_name     = "${var.application}-${var.environment}-control-plane-vnic"
-    hostname_label   = "control-plane"
-    nsg_ids          = [oci_core_network_security_group.kubernetes_nodes.id]
+    display_name              = "${var.application}-${var.environment}-control-plane-vnic"
+    hostname_label            = "control-plane"
+    nsg_ids                   = [oci_core_network_security_group.kubernetes_nodes.id]
   }
 
   metadata = {
@@ -159,8 +159,8 @@ resource "oci_core_instance" "control_plane" {
   preserve_boot_volume = false
 
   shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
+    ocpus         = var.control_plane_ocpus
+    memory_in_gbs = var.control_plane_memory_in_gbs
   }
 
   source_details {
@@ -177,7 +177,7 @@ resource "oci_core_instance" "worker" {
   availability_domain = data.oci_identity_availability_domains.available.availability_domains[0].name
   compartment_id      = oci_identity_compartment.dummy_exchange.id
   display_name        = "${var.application}-${var.environment}-worker"
-  shape               = "VM.Standard.A1.Flex"
+  shape               = var.instance_shape
 
   agent_config {
     plugins_config {
@@ -187,12 +187,12 @@ resource "oci_core_instance" "worker" {
   }
 
   create_vnic_details {
-    subnet_id        = oci_core_subnet.dummy_exchange_priv.id
-    assign_public_ip = false
+    subnet_id                 = oci_core_subnet.dummy_exchange_priv.id
+    assign_public_ip          = false
     assign_private_dns_record = true
-    display_name     = "${var.application}-${var.environment}-worker-vnic"
-    hostname_label   = "worker"
-    nsg_ids          = [oci_core_network_security_group.kubernetes_nodes.id]
+    display_name              = "${var.application}-${var.environment}-worker-vnic"
+    hostname_label            = "worker"
+    nsg_ids                   = [oci_core_network_security_group.kubernetes_nodes.id]
   }
 
   metadata = {
@@ -202,8 +202,8 @@ resource "oci_core_instance" "worker" {
   preserve_boot_volume = false
 
   shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
+    ocpus         = var.worker_ocpus
+    memory_in_gbs = var.worker_memory_in_gbs
   }
 
   source_details {
@@ -215,5 +215,39 @@ resource "oci_core_instance" "worker" {
   freeform_tags = merge(local.freeform_tags, {
     Component = "worker"
   })
+}
+
+action "ansible_playbook_run" "cluster" {
+  config {
+    ansible_playbook_binary = var.ansible_runner == "windows" ? abspath("${path.module}/ansible-playbook.cmd") : "${var.ansible_wsl_directory}/ansible-playbook-wrapper.sh"
+    playbooks               = ["${var.ansible_wsl_directory}/playbooks/cluster.yml"]
+    inventory_files         = ["${var.ansible_wsl_directory}/inventories/dev/terraform.ini"]
+  }
+}
+
+resource "terraform_data" "ansible" {
+  input = {
+    control_plane_id = oci_core_instance.control_plane.id
+    worker_id        = oci_core_instance.worker.id
+    playbook_hash    = filesha256("${path.module}/../ansible/playbooks/cluster.yml")
+    control_plane_role_hash = filesha256(
+      "${path.module}/../ansible/roles/control_plane/tasks/main.yml"
+    )
+    worker_role_hash = filesha256("${path.module}/../ansible/roles/worker/tasks/main.yml")
+    cluster_addons_role_hash = filesha256(
+      "${path.module}/../ansible/roles/cluster_addons/tasks/main.yml"
+    )
+    argocd_application_hash = filesha256(
+      "${path.module}/../../deploy/argocd/dummy-exchange-dev.yaml"
+    )
+  }
+
+  lifecycle {
+    action_trigger {
+      events     = [after_create, after_update]
+      actions    = [action.ansible_playbook_run.cluster]
+      on_failure = halt
+    }
+  }
 }
 

@@ -4,6 +4,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ $name }}-postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     {{- include "dummy-exchange.labels" . | nindent 4 }}
 spec:
@@ -19,6 +21,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ $name }}-postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     {{- include "dummy-exchange.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgres

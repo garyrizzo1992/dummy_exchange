@@ -1,0 +1,145 @@
+name: Test, publish, and deploy applications
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - migrations/**
+      - deploy/helm/**
+      - .github/workflows/application.yml
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - migrations/**
+      - deploy/helm/**
+      - '!deploy/helm/dummy-exchange/values-dev.yaml'
+      - .github/workflows/application.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - uses: azure/setup-helm@v5
+        with:
+          version: v3.17.3
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo build --workspace --release --locked
+      - run: helm lint deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml
+      - run: helm template exchange deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml > /dev/null
+
+  verify-images:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: crates/api/Dockerfile
+          - dockerfile: crates/worker/Dockerfile
+          - dockerfile: crates/simulator/Dockerfile
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+
+  publish-images:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      worker_digest: ${{ steps.worker.outputs.digest }}
+      simulator_digest: ${{ steps.simulator.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - id: api
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: crates/api/Dockerfile
+          push: true
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-api:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - id: worker
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: crates/worker/Dockerfile
+          push: true
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-worker:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+      - id: simulator
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: crates/simulator/Dockerfile
+          push: true
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-simulator:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+  promote-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: publish-images
+    runs-on: ubuntu-24.04
+    environment: dev
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: mikefarah/yq@v4
+      - name: Record the immutable image digests
+        env:
+          IMAGE_REGISTRY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}
+          API_DIGEST: ${{ needs.publish-images.outputs.api_digest }}
+          WORKER_DIGEST: ${{ needs.publish-images.outputs.worker_digest }}
+          SIMULATOR_DIGEST: ${{ needs.publish-images.outputs.simulator_digest }}
+        run: |
+          yq -i '.imageRegistry = strenv(IMAGE_REGISTRY)' deploy/helm/dummy-exchange/values-dev.yaml
+          yq -i '.api.image.digest = strenv(API_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
+          yq -i '.worker.image.digest = strenv(WORKER_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
+          yq -i '.simulator.image.digest = strenv(SIMULATOR_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
+      - name: Commit the desired development release
+        run: |
+          git config user.name 'dummy-exchange deployment bot'
+          git config user.email 'deployment-bot@users.noreply.github.com'
+          git add deploy/helm/dummy-exchange/values-dev.yaml
+          git diff --cached --quiet || git commit -m 'deploy(dev): promote ${{ github.sha }}'
+          git push

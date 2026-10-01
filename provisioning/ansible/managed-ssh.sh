@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-oci() { oci.exe "$@" | tr -d '\r'; }
+if command -v oci.exe >/dev/null 2>&1; then
+  OCI_COMMAND="oci.exe"
+else
+  OCI_COMMAND="oci"
+fi
+
+oci() { "$OCI_COMMAND" "$@" | tr -d '\r'; }
 SSH_KEY="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
-CONFIG="/mnt/c/Users/Gary/.oci/config"
+
+if [[ -n "${OCI_CLI_CONFIG_FILE:-}" ]]; then
+  CONFIG="$OCI_CLI_CONFIG_FILE"
+elif [[ -f /mnt/c/Users/Gary/.oci/config ]]; then
+  CONFIG="/mnt/c/Users/Gary/.oci/config"
+else
+  CONFIG="$HOME/.oci/config"
+fi
 
 TENANCY="$(awk -F= '/^tenancy[[:space:]]*=/ {print $2; exit}' "$CONFIG" | xargs)"
 COMPARTMENT="$(oci iam compartment list --compartment-id "$TENANCY" --compartment-id-in-subtree true --all \
@@ -17,7 +30,7 @@ session_id() {
     --raw-output
 }
 
-connect_managed_ssh() {
+managed_ssh_connection() {
   local node_name="$1" session_name="$2"
   local node plugin session ttl command proxy port target
 
@@ -37,13 +50,13 @@ connect_managed_ssh() {
     ttl="$(oci bastion bastion get --bastion-id "$BASTION" \
       --query 'data."max-session-ttl-in-seconds"' --raw-output)"
 
-    echo "Creating SSH session for $node_name..."
+    echo "Creating SSH session for $node_name..." >&2
     oci bastion session create-managed-ssh \
       --bastion-id "$BASTION" \
       --target-resource-id "$node" \
       --target-os-username opc \
       --target-port 22 \
-      --ssh-public-key-file "$(wslpath -w "$SSH_KEY.pub")" \
+      --ssh-public-key-file "$(if [[ "$OCI_COMMAND" == "oci.exe" ]]; then wslpath -w "$SSH_KEY.pub"; else printf '%s' "$SSH_KEY.pub"; fi)" \
       --session-ttl "$ttl" \
       --display-name "$session_name" \
       --wait-for-state SUCCEEDED >/dev/null
@@ -65,6 +78,18 @@ connect_managed_ssh() {
   [[ "$command" =~ -p[[:space:]]+([0-9]+)[[:space:]]+([^[:space:]]+)$ ]] || return 1
   port="${BASH_REMATCH[1]}"
   target="${BASH_REMATCH[2]}"
+
+  printf '%s\n%s\n%s\n' "$proxy" "$port" "$target"
+}
+
+connect_managed_ssh() {
+  local node_name="$1" session_name="$2"
+  local connection proxy port target
+
+  mapfile -t connection < <(managed_ssh_connection "$node_name" "$session_name")
+  proxy="${connection[0]}"
+  port="${connection[1]}"
+  target="${connection[2]}"
 
   echo "Opening SSH shell to $node_name..."
   exec ssh -i "$SSH_KEY" \
