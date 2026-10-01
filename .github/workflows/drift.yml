@@ -38,7 +38,7 @@ jobs:
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         run: |
           install -d -m 700 "$HOME/.oci"
-          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci_api_key.pem"
+          printf '%s\n' "$OCI_API_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/oci_api_key.pem"
           chmod 600 "$RUNNER_TEMP/oci_api_key.pem"
           printf '[DEFAULT]\ntenancy=%s\nuser=%s\nfingerprint=%s\nkey_file=%s\nregion=eu-milan-1\n' "$OCI_TENANCY_OCID" "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$RUNNER_TEMP/oci_api_key.pem" > "$HOME/.oci/config"
           echo "TF_VAR_private_key_path=$RUNNER_TEMP/oci_api_key.pem" >> "$GITHUB_ENV"

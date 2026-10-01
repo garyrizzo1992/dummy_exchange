@@ -62,7 +62,7 @@ jobs:
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         run: |
           install -d -m 700 "$HOME/.oci"
-          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci_api_key.pem"
+          printf '%s\n' "$OCI_API_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/oci_api_key.pem"
           chmod 600 "$RUNNER_TEMP/oci_api_key.pem"
           printf '[DEFAULT]\ntenancy=%s\nuser=%s\nfingerprint=%s\nkey_file=%s\nregion=eu-milan-1\n' "$OCI_TENANCY_OCID" "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$RUNNER_TEMP/oci_api_key.pem" > "$HOME/.oci/config"
           echo "TF_VAR_private_key_path=$RUNNER_TEMP/oci_api_key.pem" >> "$GITHUB_ENV"
@@ -97,7 +97,7 @@ jobs:
           pipx install oci-cli
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           install -d -m 700 "$HOME/.ssh"
-          printf '%s' "$CI_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$CI_SSH_PRIVATE_KEY" | tr -d '\r' > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
           ssh-keygen -y -f "$HOME/.ssh/id_ed25519" > "$HOME/.ssh/id_ed25519.pub"
           chmod +x "$GITHUB_WORKSPACE/provisioning/ansible/ansible-playbook-wrapper.sh"
@@ -109,7 +109,7 @@ jobs:
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         run: |
           install -d -m 700 "$HOME/.oci"
-          printf '%s' "$OCI_API_PRIVATE_KEY" > "$RUNNER_TEMP/oci_api_key.pem"
+          printf '%s\n' "$OCI_API_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/oci_api_key.pem"
           chmod 600 "$RUNNER_TEMP/oci_api_key.pem"
           printf '[DEFAULT]\ntenancy=%s\nuser=%s\nfingerprint=%s\nkey_file=%s\nregion=eu-milan-1\n' "$OCI_TENANCY_OCID" "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$RUNNER_TEMP/oci_api_key.pem" > "$HOME/.oci/config"
           echo "TF_VAR_private_key_path=$RUNNER_TEMP/oci_api_key.pem" >> "$GITHUB_ENV"
