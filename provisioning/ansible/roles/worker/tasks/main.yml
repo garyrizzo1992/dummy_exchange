@@ -3,3 +3,4 @@
   ansible.builtin.command: "{{ kubeadm_join_command }}"
   args:
     creates: /etc/kubernetes/kubelet.conf
+  no_log: true

@@ -21,7 +21,10 @@ Binary: `exchange-api` (`cargo run -p exchange-api`). This is the public, statel
 | `API_BIND` | No | Bind address; use `0.0.0.0:3000` in a container. |
 | `RUST_LOG` | No | Structured log filter, e.g. `info,exchange_api=debug`. |
 
-The startup path runs SQL migrations. For a multi-replica production rollout, run migrations as a separate, single controlled release step instead of allowing every API replica to perform schema changes at startup.
+Run `exchange-api migrate` as a single release step before starting API replicas.
+The Helm chart provides an Argo CD Sync job after PostgreSQL becomes healthy and
+before application rollouts. Schema changes must remain compatible with the old
+application while it is still running during a rolling update.
 
 ## Health and observability
 

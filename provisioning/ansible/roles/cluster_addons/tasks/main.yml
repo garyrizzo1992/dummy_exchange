@@ -15,6 +15,22 @@
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf wait --for=condition=Ready nodes --all --timeout=10m
   changed_when: false
 
+# Development volumes use the existing VM disk:
+# https://github.com/rancher/local-path-provisioner
+- name: Check whether development storage is installed
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get storageclass local-path
+  register: local_storage
+  changed_when: false
+  failed_when: false
+
+- name: Install development storage
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.32/deploy/local-path-storage.yaml
+  when: local_storage.rc != 0
+
+- name: Wait for the storage provisioner
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/local-path-provisioner -n local-path-storage --timeout=5m
+  changed_when: false
+
 # Pinned Argo CD bootstrap manifest:
 # https://argo-cd.readthedocs.io/en/stable/getting_started/
 - name: Check whether the Argo CD namespace exists

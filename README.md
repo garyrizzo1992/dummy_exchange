@@ -71,7 +71,7 @@ docker compose up --scale worker=3
 
 ## CI and Docker Hub images
 
-The GitHub Actions workflow at `.github/workflows/dockerhub.yml` runs formatting, Clippy, tests, a release build, and Dockerfile builds. On pull requests and normal `main` pushes, it builds only images affected by source, Dockerfile, workspace dependency, domain, or migration changes; docs and Helm-only changes do not publish images. Version tags such as `v0.1.0` and manual runs build all three images so a complete release is available. Pull requests verify images without publishing; qualifying pushes publish to Docker Hub:
+The GitHub Actions workflow at `.github/workflows/application.yml` runs formatting, Clippy, tests, a release build, Helm validation, and Dockerfile builds. Pull requests verify images without publishing. Application changes merged to `main` publish all three images to Docker Hub:
 
 | Service | Docker Hub repository |
 |---|---|
@@ -84,7 +84,9 @@ Before the first publishing run, add these **repository secrets** in GitHub unde
 - `DOCKERHUB_USERNAME`: your Docker Hub namespace.
 - `DOCKERHUB_TOKEN`: a Docker Hub access token with write access to that namespace; do not use your account password.
 
-The default-branch build receives `latest`, `main`, and a commit-SHA tag. A `v1.2.3` tag additionally publishes `1.2.3` and `1.2`. Deploy a specific immutable image digest after the workflow completes rather than using `latest`.
+Images receive a `sha-<commit>` tag. The promotion job commits their immutable
+digests to `values-dev.yaml`, which Argo CD reconciles. See [continuous delivery](docs/cicd.md)
+for infrastructure workflows and setup.
 
 ## Kubernetes GitOps
 

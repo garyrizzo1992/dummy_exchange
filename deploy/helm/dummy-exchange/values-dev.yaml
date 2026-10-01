@@ -15,3 +15,18 @@ simulator:
     tag: main
     digest: "sha256:64b57d6f83bd1ac247f414320aaabcd48d7f86626a0829c01a01ced037a71e40"
 imageRegistry: docker.io/garyrizzo1992
+
+# Development data stays on the worker VM disk. Use durable CSI volumes and
+# backups before promoting this environment to production.
+postgres:
+  persistence:
+    storageClass: local-path
+
+redis:
+  persistence:
+    storageClass: local-path
+
+monitoring:
+  prometheus:
+    persistence:
+      storageClass: local-path

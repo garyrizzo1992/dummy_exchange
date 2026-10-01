@@ -13,6 +13,12 @@ Argo CD is the only component that deploys application manifests to Kubernetes.
 Terraform creates OCI resources, while Ansible installs and bootstraps the
 cluster, Calico, Argo CD, and the Argo CD Application.
 
+Development PVCs use `local-path` storage on the worker VM. Replacing the worker
+removes that local data; production needs durable CSI storage and backups.
+The Argo CD migration job runs once per synchronization after PostgreSQL is
+healthy and before application updates. Migrations must support the previous
+application version during rolling updates.
+
 ## GitHub environment setup
 
 Create a protected GitHub environment named `dev`. Add these environment
