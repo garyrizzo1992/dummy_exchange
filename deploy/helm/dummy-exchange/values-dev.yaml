@@ -16,6 +16,14 @@ simulator:
     digest: "sha256:64b57d6f83bd1ac247f414320aaabcd48d7f86626a0829c01a01ced037a71e40"
 imageRegistry: docker.io/garyrizzo1992
 
+# Only identifiers are committed. Values are stored in OCI Vault.
+externalSecrets:
+  enabled: true
+  vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq
+  postgresSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiacpigp7k66shoxox4db4aqzeqdcihhvkfgtg7pmcejfja
+  jwtSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiafqvhwhg3almdlepe6s5koyfj4zyar3zctnogyfkyreha
+  grafanaSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkialximxd7wrc4bq3l2xxvsuw5fvlllquvsqtea33ivuyeq
+
 # Development data stays on the worker VM disk. Use durable CSI volumes and
 # backups before promoting this environment to production.
 postgres:

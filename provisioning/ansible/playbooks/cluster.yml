@@ -48,6 +48,41 @@
       ansible.builtin.command: sysctl --system
       changed_when: false
 
+    # Docker publishes containerd's RPM package for RHEL-compatible systems:
+    # https://docs.docker.com/engine/install/centos/
+    - name: Configure the containerd package repository
+      ansible.builtin.yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable
+        baseurl: https://download.docker.com/linux/centos/$releasever/$basearch/stable
+        enabled: true
+        gpgcheck: true
+        gpgkey: https://download.docker.com/linux/centos/gpg
+
+    # RPM-based kubeadm installations use SELinux permissive mode:
+    # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+    - name: Set SELinux to permissive now
+      ansible.builtin.command: setenforce 0
+      changed_when: false
+
+    - name: Keep SELinux permissive after reboot
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: SELINUX=permissive
+
+    # Calico manages the host packet-filter rules. OCI NSGs enforce the VCN boundary:
+    # https://docs.tigera.io/calico/latest/getting-started/kubernetes/requirements
+    - name: Inspect host services
+      ansible.builtin.service_facts:
+
+    - name: Stop firewalld when installed
+      ansible.builtin.service:
+        name: firewalld
+        state: stopped
+        enabled: false
+      when: "'firewalld.service' in ansible_facts.services"
+
     # The official kubeadm RPM repository and package installation instructions:
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
     - name: Configure the Kubernetes package repository
@@ -64,7 +99,7 @@
     - name: Install Kubernetes packages
       ansible.builtin.dnf:
         name:
-          - containerd
+          - containerd.io
           - kubelet
           - kubeadm
           - kubectl

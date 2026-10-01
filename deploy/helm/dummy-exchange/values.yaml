@@ -11,6 +11,14 @@ secretKeys:
   jwtSecret: jwt-secret
   grafanaAdminPassword: grafana-admin-password
 
+externalSecrets:
+  enabled: false
+  region: eu-milan-1
+  vaultId: ""
+  postgresSecretId: ""
+  jwtSecretId: ""
+  grafanaSecretId: ""
+
 api:
   image:
     name: dummy-exchange-api

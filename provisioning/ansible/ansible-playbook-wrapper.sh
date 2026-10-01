@@ -12,7 +12,21 @@ chmod 600 "$ssh_config"
 add_host() {
   local name="$1" session="$2" connection proxy port target user host
 
+  if [[ "${SSH_CONNECTION_MODE:-bastion}" == "private" ]]; then
+    local node
+    node="$(oci compute instance list --compartment-id "$COMPARTMENT" --all \
+      --query "data[?\"display-name\"==\`$name\` && \"lifecycle-state\"==\`RUNNING\`]|[0].id" --raw-output)"
+    [[ -n "$node" && "$node" != "null" ]] || { echo "Running node $name was not found." >&2; return 1; }
+    host="$(oci compute instance list-vnics --instance-id "$node" --all \
+      --query 'data[?"is-primary"==`true`]|[0]."private-ip"' --raw-output)"
+    [[ -n "$host" && "$host" != "null" ]] || { echo "Primary VNIC for $name was not found." >&2; return 1; }
+    printf 'Host %s\n  HostName %s\n  User opc\n  Port 22\n  IdentityFile %s\n  StrictHostKeyChecking accept-new\n' \
+      "${name#dummy-exchange-dev-}" "$host" "$SSH_KEY" >> "$ssh_config"
+    return
+  fi
+
   mapfile -t connection < <(managed_ssh_connection "$name" "$session")
+  [[ ${#connection[@]} == 3 ]] || { echo "SSH session setup for $name failed." >&2; return 1; }
   proxy="${connection[0]//<privateKey>/$SSH_KEY}"
   port="${connection[1]}"
   target="${connection[2]}"
@@ -35,6 +49,7 @@ for argument in "$@"; do
 done
 
 export ANSIBLE_ROLES_PATH="$ansible_dir/roles"
+export ANSIBLE_CONFIG="$ansible_dir/ansible.cfg"
 export ANSIBLE_SSH_ARGS="-F $ssh_config"
 cd "$ansible_dir"
 

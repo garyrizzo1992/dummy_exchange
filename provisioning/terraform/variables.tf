@@ -10,11 +10,23 @@ variable "tenancy_ocid" {
   sensitive   = true
 }
 
+variable "oci_auth" {
+  description = "OCI authentication: APIKey locally or InstancePrincipal on the OCI runner."
+  type        = string
+  default     = "APIKey"
+
+  validation {
+    condition     = contains(["APIKey", "InstancePrincipal"], var.oci_auth)
+    error_message = "oci_auth must be APIKey or InstancePrincipal."
+  }
+}
+
 variable "user_ocid" {
   description = "OCI user OCID used by the provider."
   type        = string
   sensitive   = true
   ephemeral   = true
+  default     = null
 }
 
 variable "fingerprint" {
@@ -22,6 +34,7 @@ variable "fingerprint" {
   type        = string
   sensitive   = true
   ephemeral   = true
+  default     = null
 }
 
 variable "private_key_path" {
@@ -29,6 +42,7 @@ variable "private_key_path" {
   type        = string
   sensitive   = true
   ephemeral   = true
+  default     = null
 }
 
 variable "environment" {
@@ -97,4 +111,15 @@ variable "worker_memory_in_gbs" {
 variable "ssh_authorized_keys" {
   description = "Public SSH key content authorized for the instance's default user."
   type        = string
+}
+
+variable "bastion_client_cidrs" {
+  description = "Stable operator CIDRs allowed through Bastion; CI uses private SSH. Empty retains the local caller-IP fallback."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.bastion_client_cidrs : can(cidrnetmask(cidr)) && cidr != "0.0.0.0/0"])
+    error_message = "Use valid restricted IPv4 CIDRs for Bastion operator access."
+  }
 }

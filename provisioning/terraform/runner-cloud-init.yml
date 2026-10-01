@@ -1,0 +1,18 @@
+#cloud-config
+packages:
+  - git
+  - jq
+  - tar
+  - gzip
+  - libicu
+  - openssl-libs
+  - krb5-libs
+  - zlib
+  - python3.12
+  - python3.12-pip
+runcmd:
+  - [python3.12, -m, venv, /opt/ci-tools]
+  - [/opt/ci-tools/bin/pip, install, ansible-core==2.20.1, oci-cli==3.94.1]
+  - [ln, -sf, /opt/ci-tools/bin/ansible-playbook, /usr/local/bin/ansible-playbook]
+  - [ln, -sf, /opt/ci-tools/bin/oci, /usr/local/bin/oci]
+  - [useradd, --create-home, --shell, /bin/bash, ci-runner]

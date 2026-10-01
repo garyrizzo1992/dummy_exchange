@@ -18,11 +18,13 @@ else
   CONFIG="$HOME/.oci/config"
 fi
 
-TENANCY="$(awk -F= '/^tenancy[[:space:]]*=/ {print $2; exit}' "$CONFIG" | xargs)"
+TENANCY="${OCI_TENANCY_OCID:-$(awk -F= '/^tenancy[[:space:]]*=/ {print $2; exit}' "$CONFIG" | xargs)}"
 COMPARTMENT="$(oci iam compartment list --compartment-id "$TENANCY" --compartment-id-in-subtree true --all \
   --query 'data[?name==`dummy-exchange` && "lifecycle-state"==`ACTIVE`]|[0].id' --raw-output)"
+if [[ "${SSH_CONNECTION_MODE:-bastion}" == "bastion" ]]; then
 BASTION="$(oci bastion bastion list --compartment-id "$COMPARTMENT" --all \
   --query 'data[?name==`dummy-exchange-dev-bastion` && "lifecycle-state"==`ACTIVE`]|[0].id' --raw-output)"
+fi
 
 session_id() {
   oci bastion session list --bastion-id "$BASTION" --all \

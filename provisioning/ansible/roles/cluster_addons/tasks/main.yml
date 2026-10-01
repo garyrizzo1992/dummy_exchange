@@ -31,6 +31,46 @@
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/local-path-provisioner -n local-path-storage --timeout=5m
   changed_when: false
 
+- name: Download Helm
+  ansible.builtin.get_url:
+    url: https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz
+    dest: /tmp/helm-v3.17.3-linux-amd64.tar.gz
+    checksum: sha256:https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz.sha256sum
+    mode: '0644'
+
+- name: Extract Helm
+  ansible.builtin.unarchive:
+    src: /tmp/helm-v3.17.3-linux-amd64.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    creates: /usr/local/bin/helm
+
+- name: Configure the External Secrets Helm repository
+  ansible.builtin.command: /usr/local/bin/helm repo add external-secrets https://charts.external-secrets.io --force-update
+  changed_when: false
+
+- name: Install External Secrets on the worker
+  ansible.builtin.command:
+    argv:
+      - /usr/local/bin/helm
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - upgrade
+      - --install
+      - external-secrets
+      - external-secrets/external-secrets
+      - --version
+      - 2.11.0
+      - --namespace
+      - external-secrets
+      - --create-namespace
+      - --set-string
+      - "nodeSelector.kubernetes\\.io/hostname={{ hostvars[groups['workers'][0]].ansible_facts.hostname }}"
+      - --wait
+      - --timeout
+      - 5m
+
 # Pinned Argo CD bootstrap manifest:
 # https://argo-cd.readthedocs.io/en/stable/getting_started/
 - name: Check whether the Argo CD namespace exists
@@ -43,15 +83,9 @@
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace argocd
   when: argocd_namespace.rc != 0
 
-- name: Check whether Argo CD is installed
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get deployment argocd-server -n argocd
-  register: argocd
-  changed_when: false
-  failed_when: false
-
 - name: Install Argo CD
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.3/manifests/install.yaml
-  when: argocd.rc != 0
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.3/manifests/install.yaml
+  changed_when: false
 
 - name: Wait for Argo CD
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/argocd-server -n argocd --timeout=10m
@@ -67,49 +101,23 @@
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace dummy-exchange
   when: application_namespace.rc != 0
 
-# This generates initial development-only credentials outside Git. Replace this
-# bootstrap secret with OCI Vault plus External Secrets before a shared deploy.
-- name: Check whether the application secret exists
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get secret dummy-exchange-secrets -n dummy-exchange
-  register: application_secret
-  changed_when: false
-  failed_when: false
-
-- name: Generate the development database password
-  ansible.builtin.command: openssl rand -hex 32
-  register: postgres_password
-  no_log: true
-  when: application_secret.rc != 0
-
-- name: Generate the development JWT secret
-  ansible.builtin.command: openssl rand -hex 32
-  register: jwt_secret
-  no_log: true
-  when: application_secret.rc != 0
-
-- name: Generate the development Grafana password
-  ansible.builtin.command: openssl rand -hex 32
-  register: grafana_admin_password
-  no_log: true
-  when: application_secret.rc != 0
-
-- name: Create the development application secret
+- name: Configure Argo CD to wait for Vault secrets before deploying PostgreSQL
   ansible.builtin.command:
     argv:
       - kubectl
       - --kubeconfig
       - /etc/kubernetes/admin.conf
+      - patch
+      - configmap
+      - argocd-cm
       - -n
-      - dummy-exchange
-      - create
-      - secret
-      - generic
-      - dummy-exchange-secrets
-      - "--from-literal=postgres-password={{ postgres_password.stdout }}"
-      - "--from-literal=jwt-secret={{ jwt_secret.stdout }}"
-      - "--from-literal=grafana-admin-password={{ grafana_admin_password.stdout }}"
-  no_log: true
-  when: application_secret.rc != 0
+      - argocd
+      - --type=merge
+      - -p
+      - >-
+        {{ {'data': {'resource.customizations.health.external-secrets.io_ExternalSecret':
+        'hs = {status = "Progressing", message = "Waiting for Vault secret"}; if obj.status ~= nil and obj.status.conditions ~= nil then for _, c in ipairs(obj.status.conditions) do if c.type == "Ready" and c.status == "True" then hs.status = "Healthy"; hs.message = "Secret synchronized" end end end; return hs'}} | to_json }}
+  changed_when: false
 
 - name: Copy the Argo CD development application
   ansible.builtin.copy:

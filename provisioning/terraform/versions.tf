@@ -1,6 +1,6 @@
 terraform {
-  # The native OCI state backend requires Terraform 1.12 or newer.
-  required_version = ">= 1.12.0"
+  # Provider actions require Terraform 1.14 or newer.
+  required_version = ">= 1.14.0"
 
   required_providers {
     ansible = {

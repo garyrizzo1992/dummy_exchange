@@ -124,7 +124,7 @@ resource "oci_bastion_bastion" "bastion" {
   max_session_ttl_in_seconds = 10800
 
   #Optional
-  client_cidr_block_allow_list = ["${trimspace(data.http.terraform_runner_ip.response_body)}/32"]
+  client_cidr_block_allow_list = length(var.bastion_client_cidrs) > 0 ? var.bastion_client_cidrs : ["${trimspace(data.http.terraform_runner_ip.response_body)}/32"]
   freeform_tags                = local.freeform_tags
   name                         = "${var.application}-${var.environment}-bastion"
 }
@@ -229,7 +229,13 @@ resource "terraform_data" "ansible" {
   input = {
     control_plane_id = oci_core_instance.control_plane.id
     worker_id        = oci_core_instance.worker.id
-    playbook_hash    = filesha256("${path.module}/../ansible/playbooks/cluster.yml")
+    connection_hash = sha256(join("", [
+      filesha256("${path.module}/../ansible/ansible-playbook-wrapper.sh"),
+      filesha256("${path.module}/../ansible/managed-ssh.sh"),
+      filesha256("${path.module}/../ansible/ansible.cfg"),
+      filesha256("${path.module}/../ansible/inventories/dev/terraform.ini")
+    ]))
+    playbook_hash = filesha256("${path.module}/../ansible/playbooks/cluster.yml")
     control_plane_role_hash = filesha256(
       "${path.module}/../ansible/roles/control_plane/tasks/main.yml"
     )
