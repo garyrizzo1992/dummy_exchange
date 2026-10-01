@@ -29,6 +29,7 @@ resource "oci_identity_policy" "vault_reader" {
   name           = "${var.application}-${var.environment}-vault-reader"
   description    = "Read application secrets in the project compartment"
   statements = [
+    "Allow dynamic-group ${oci_identity_dynamic_group.vault_reader.name} to read vaults in compartment id ${oci_identity_compartment.dummy_exchange.id}",
     "Allow dynamic-group ${oci_identity_dynamic_group.vault_reader.name} to read secret-bundles in compartment id ${oci_identity_compartment.dummy_exchange.id}"
   ]
 }
