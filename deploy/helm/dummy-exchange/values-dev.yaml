@@ -2,18 +2,16 @@
 # digests are replaced by the GitHub Actions promotion workflow after an image
 # is successfully built and tested.
 imagePullPolicy: IfNotPresent
-
 api:
   image:
     tag: main
-    digest: ""
-
+    digest: "sha256:f497975a64c3291ab1985a1c54f721c4048e462067a6edd468b560139aaae909"
 worker:
   image:
     tag: main
-    digest: ""
-
+    digest: "sha256:3d2fc9846af200dcf0eff65e094456ff9917f5954d05e03aaabdc1f97f48bec3"
 simulator:
   image:
     tag: main
-    digest: ""
+    digest: "sha256:64b57d6f83bd1ac247f414320aaabcd48d7f86626a0829c01a01ced037a71e40"
+imageRegistry: docker.io/garyrizzo1992
