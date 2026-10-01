@@ -5,17 +5,16 @@ imagePullPolicy: IfNotPresent
 api:
   image:
     tag: main
-    digest: "sha256:f497975a64c3291ab1985a1c54f721c4048e462067a6edd468b560139aaae909"
+    digest: "sha256:5375f20695c365961df720537a8195a4a446c3bd571eed1a0e6a9bde9775e021"
 worker:
   image:
     tag: main
-    digest: "sha256:3d2fc9846af200dcf0eff65e094456ff9917f5954d05e03aaabdc1f97f48bec3"
+    digest: "sha256:dee31861f14e2fe42e59417aaf2fe94031a027116f36b0196b5a4fc2da95f56a"
 simulator:
   image:
     tag: main
-    digest: "sha256:64b57d6f83bd1ac247f414320aaabcd48d7f86626a0829c01a01ced037a71e40"
+    digest: "sha256:beef525aadbae6f511d70d871039ec3dc84d571217ae2fe892953f9bc65b84bf"
 imageRegistry: docker.io/garyrizzo1992
-
 # Only identifiers are committed. Values are stored in OCI Vault.
 externalSecrets:
   enabled: true
@@ -23,17 +22,14 @@ externalSecrets:
   postgresSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiacpigp7k66shoxox4db4aqzeqdcihhvkfgtg7pmcejfja
   jwtSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkiafqvhwhg3almdlepe6s5koyfj4zyar3zctnogyfkyreha
   grafanaSecretId: ocid1.vaultsecret.oc1.eu-milan-1.amaaaaaai7hddkialximxd7wrc4bq3l2xxvsuw5fvlllquvsqtea33ivuyeq
-
 # Development data stays on the worker VM disk. Use durable CSI volumes and
 # backups before promoting this environment to production.
 postgres:
   persistence:
     storageClass: local-path
-
 redis:
   persistence:
     storageClass: local-path
-
 monitoring:
   prometheus:
     persistence:
