@@ -31,6 +31,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false
       - run: terraform validate
@@ -58,6 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
       - name: Configure the Ansible SSH key
         env:
           CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
