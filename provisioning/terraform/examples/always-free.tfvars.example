@@ -1,0 +1,12 @@
+# For a NEW deployment with an ARM64 Oracle Linux image in the home region.
+# Apply this file after your normal environment inputs. Do not apply it to
+# existing E5 nodes: changing shape/image can replace them and lose local data.
+instance_shape              = "VM.Standard.A1.Flex"
+control_plane_ocpus         = 2
+control_plane_memory_in_gbs  = 8
+worker_ocpus                = 2
+worker_memory_in_gbs         = 16
+enable_ci_runner            = false
+# Supply image_ocid for a compatible ARM64 image separately.
+# Total: 4 OCPUs, 24 GB memory, two 50 GB boot volumes.
+# This file does not guarantee zero billing for other OCI services/resources.

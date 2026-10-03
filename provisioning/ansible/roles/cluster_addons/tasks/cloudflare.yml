@@ -1,0 +1,104 @@
+---
+- name: Check the tunnel's non-secret identifiers
+  ansible.builtin.assert:
+    that:
+      - cloudflare_account_id | default('') | length == 32
+      - cloudflare_tunnel_id | default('') | length > 0
+    fail_msg: "Configure the Cloudflare account and tunnel IDs."
+
+- name: Create the private ingress namespace
+  ansible.builtin.shell: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf create namespace ingress --dry-run=client -o yaml |
+    kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f -
+  args:
+    executable: /bin/bash
+  register: ingress_namespace
+  changed_when: "'created' in ingress_namespace.stdout"
+
+# Run on the controller: the Cloudflare API credential never goes to a cluster VM.
+# Neither credential is a Terraform input/output or a persisted extra-vars file.
+- name: Fetch the connector token without storing it in Terraform state
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflare_account_id }}/cfd_tunnel/{{ cloudflare_tunnel_id }}/token"
+    headers:
+      Authorization: >-
+        Bearer {{ lookup('ansible.builtin.env', 'CLOUDFLARE_API_TOKEN') or
+        lookup('ansible.builtin.file', playbook_dir + '/../../.cloudflare') | trim }}
+    return_content: true
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  register: cloudflare_connector_token
+  no_log: true
+
+- name: Validate the connector response
+  ansible.builtin.assert:
+    that:
+      - cloudflare_connector_token.json.success
+      - cloudflare_connector_token.json.result | length > 0
+  no_log: true
+
+- name: Synchronize the connector Secret through stdin
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, apply, -f, '-']
+    stdin: "{{ {'apiVersion': 'v1', 'kind': 'Secret', 'metadata': {'name': 'cloudflare-tunnel', 'namespace': 'ingress'}, 'type': 'Opaque', 'data': {'token': cloudflare_connector_token.json.result | b64encode}} | to_json }}"
+  register: cloudflare_secret_sync
+  changed_when: "'unchanged' not in cloudflare_secret_sync.stdout"
+  no_log: true
+
+- name: Check whether an existing connector needs to reload its token
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, deployment/exchange-tunnel-dev-cloudflared, -n, ingress, --ignore-not-found, -o, name]
+  register: cloudflare_existing_connector
+  changed_when: false
+
+- name: Restart an existing connector after a token change
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, rollout, restart, deployment/exchange-tunnel-dev-cloudflared, -n, ingress]
+  when:
+    - cloudflare_secret_sync.changed
+    - cloudflare_existing_connector.stdout | trim | length > 0
+
+- name: Copy the connector Argo application
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../deploy/argocd/{{ item }}-dev.yaml"
+    dest: "/tmp/exchange-{{ item }}-dev.yaml"
+    mode: '0644'
+  loop: [tunnel]
+
+- name: Apply the free tunnel application
+  ansible.builtin.command: "kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/exchange-{{ item }}-dev.yaml"
+  loop: [tunnel]
+
+- name: Wait for the connector to become healthy
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - -n
+      - argocd
+      - "application/exchange-{{ item }}-dev"
+      - --for=jsonpath={.status.health.status}=Healthy
+      - --timeout=10m
+  loop: [tunnel]
+
+# Retirement runs only after the direct connector configuration is healthy.
+- name: Remove the retired Traefik Argo application and its resources
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, delete, application, exchange-ingress-dev, -n, argocd, --ignore-not-found, --cascade=foreground]
+  register: retired_ingress_app
+  changed_when: "'deleted' in retired_ingress_app.stdout"
+
+- name: Remove resources owned by the retired Traefik Helm release
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, delete, 'deployment,service,serviceaccount,configmap,secret,role,rolebinding', -n, ingress, -l, 'app.kubernetes.io/instance=traefik', --ignore-not-found]
+  register: retired_ingress_resources
+  changed_when: "'deleted' in retired_ingress_resources.stdout"
+
+- name: Remove the retired Traefik cluster permissions and ingress class
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, delete, 'clusterrole,clusterrolebinding,ingressclass', -l, 'app.kubernetes.io/instance=traefik', --ignore-not-found]
+  register: retired_ingress_permissions
+  changed_when: "'deleted' in retired_ingress_permissions.stdout"

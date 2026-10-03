@@ -1,3 +1,4 @@
+# Keep the running release compatible while CI promotes the new images.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -36,6 +37,10 @@ spec:
       valueFiles:
       - values.yaml
       - values-dev.yaml
+      valuesObject:
+        extraEnv:
+        - name: DATABASE_URL
+          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
   - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
     targetRevision: main
     path: deploy/helm/exchange-worker
@@ -44,6 +49,10 @@ spec:
       valueFiles:
       - values.yaml
       - values-dev.yaml
+      valuesObject:
+        extraEnv:
+        - name: DATABASE_URL
+          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
   - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
     targetRevision: main
     path: deploy/helm/exchange
@@ -52,3 +61,7 @@ spec:
       valueFiles:
       - values.yaml
       - values-dev.yaml
+      valuesObject:
+        extraEnv:
+        - name: DATABASE_URL
+          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable

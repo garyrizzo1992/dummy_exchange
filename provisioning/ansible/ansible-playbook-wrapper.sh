@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ansible_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-arguments=()
 source "$ansible_dir/managed-ssh.sh"
 
 ssh_config="$(mktemp)"
@@ -40,20 +39,12 @@ add_host() {
 add_host "dummy-exchange-dev-control-plane" "control-plane-ssh"
 add_host "dummy-exchange-dev-worker" "worker-ssh"
 
-for argument in "$@"; do
-  if [[ "$argument" =~ ^[A-Za-z]:[\\/] ]]; then
-    arguments+=("$(wslpath -u "$argument")")
-  else
-    arguments+=("$argument")
-  fi
-done
-
 export ANSIBLE_ROLES_PATH="$ansible_dir/roles"
 export ANSIBLE_CONFIG="$ansible_dir/ansible.cfg"
 export ANSIBLE_SSH_ARGS="-F $ssh_config"
 cd "$ansible_dir"
 
-if ansible-playbook "${arguments[@]}"; then
+if ansible-playbook "$@"; then
   exit 0
 else
   exit $?

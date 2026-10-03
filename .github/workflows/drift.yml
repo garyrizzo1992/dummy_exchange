@@ -35,8 +35,7 @@ jobs:
       TF_VAR_bastion_client_cidrs: ${{ vars.BASTION_CLIENT_CIDRS }}
       TF_VAR_image_ocid: ${{ vars.OCI_IMAGE_OCID }}
       TF_VAR_ssh_authorized_keys: ${{ secrets.CI_SSH_PUBLIC_KEY }}
-      TF_VAR_ansible_runner: linux
-      TF_VAR_ansible_wsl_directory: ${{ github.workspace }}/provisioning/ansible
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3

@@ -1,5 +1,3 @@
-# Account-specific provider values come from ignored local configuration, such
-# as terraform.tfvars, or from the OCI CLI configuration/environment.
 provider "oci" {
   auth             = var.oci_auth
   tenancy_ocid     = var.tenancy_ocid
@@ -8,3 +6,5 @@ provider "oci" {
   private_key_path = var.oci_auth == "APIKey" ? var.private_key_path : null
   region           = var.region
 }
+
+provider "cloudflare" {}

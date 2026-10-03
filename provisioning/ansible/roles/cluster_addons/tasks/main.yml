@@ -31,16 +31,20 @@
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/local-path-provisioner -n local-path-storage --timeout=5m
   changed_when: false
 
+- name: Select the Helm binary architecture
+  ansible.builtin.set_fact:
+    helm_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts.architecture] }}"
+
 - name: Download Helm
   ansible.builtin.get_url:
-    url: https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz
-    dest: /tmp/helm-v3.17.3-linux-amd64.tar.gz
-    checksum: sha256:https://get.helm.sh/helm-v3.17.3-linux-amd64.tar.gz.sha256sum
+    url: https://get.helm.sh/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
+    dest: /tmp/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
+    checksum: sha256:https://get.helm.sh/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz.sha256sum
     mode: '0644'
 
 - name: Extract Helm
   ansible.builtin.unarchive:
-    src: /tmp/helm-v3.17.3-linux-amd64.tar.gz
+    src: /tmp/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
     dest: /usr/local/bin
     remote_src: true
     extra_opts: [--strip-components=1]
@@ -115,8 +119,104 @@
       - --type=merge
       - -p
       - >-
-        {{ {'data': {'resource.customizations.health.external-secrets.io_ExternalSecret':
+        {{ {'data': {'application.resourceTrackingMethod': 'annotation', 'resource.customizations.health.external-secrets.io_ExternalSecret':
         'hs = {status = "Progressing", message = "Waiting for Vault secret"}; if obj.status ~= nil and obj.status.conditions ~= nil then for _, c in ipairs(obj.status.conditions) do if c.type == "Ready" and c.status == "True" then hs.status = "Healthy"; hs.message = "Secret synchronized" end end end; return hs'}} | to_json }}
+  changed_when: false
+
+# Bootstrap new clusters directly; existing releases require the staged transfer.
+- name: Inspect any existing business application
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get application dummy-exchange-dev -n argocd -o json --ignore-not-found
+  register: existing_exchange_application
+  changed_when: false
+
+- name: Require ownership transfer before reprovisioning a legacy application
+  ansible.builtin.assert:
+    that:
+      - existing_exchange_application.stdout | trim == '' or ((existing_exchange_application.stdout | from_json).spec.sources | default([]) | map(attribute='path') | list | sort == ['deploy/helm/exchange', 'deploy/helm/exchange-api', 'deploy/helm/exchange-worker'])
+    fail_msg: "Transfer the existing release following deploy/helm/README.md before reprovisioning. PostgreSQL must have independent ownership before business pruning resumes."
+
+- name: Inspect workloads that require a single-pod rollout
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig, /etc/kubernetes/admin.conf, get, deployment, "{{ item }}", -n, dummy-exchange, -o, json, --ignore-not-found]
+  loop:
+    - dummy-exchange-dev-dummy-exchange-prometheus
+    - dummy-exchange-dev-dummy-exchange-simulator
+  register: single_pod_workloads
+  changed_when: false
+
+- name: Clear legacy rolling-update settings before adopting Recreate
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - patch
+      - deployment
+      - "{{ item.item }}"
+      - -n
+      - dummy-exchange
+      - --type=json
+      - -p
+      - '[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'
+  loop: "{{ single_pod_workloads.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.stdout | trim | length > 0
+    - (item.stdout | from_json).spec.strategy.type != 'Recreate' or (item.stdout | from_json).spec.strategy.rollingUpdate is defined
+
+- name: Copy infrastructure application manifests
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../deploy/argocd/{{ item }}-dev.yaml"
+    dest: "/tmp/exchange-{{ item }}-dev.yaml"
+    mode: '0644'
+  loop: [postgres, monitoring]
+
+- name: Apply infrastructure applications
+  ansible.builtin.command: "kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/exchange-{{ item }}-dev.yaml"
+  loop: [postgres, monitoring]
+
+- name: Wait for the data application to finish syncing
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - -n
+      - argocd
+      - application/dummy-exchange-data-dev
+      - --for=jsonpath={.status.sync.status}=Synced
+      - --timeout=10m
+  changed_when: false
+
+- name: Wait for database infrastructure before application migrations
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - -n
+      - argocd
+      - application/dummy-exchange-data-dev
+      - --for=jsonpath={.status.health.status}=Healthy
+      - --timeout=10m
+  changed_when: false
+
+- name: Wait for monitoring ownership before enabling business pruning
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - -n
+      - argocd
+      - application/dummy-exchange-observability-dev
+      - "--for=jsonpath={.status.{{ item }}}={{ 'Synced' if item == 'sync.status' else 'Healthy' }}"
+      - --timeout=10m
+  loop: [sync.status, health.status]
   changed_when: false
 
 - name: Copy the Argo CD development application
@@ -127,3 +227,7 @@
 
 - name: Apply the Argo CD development application
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/dummy-exchange-dev.yaml
+
+- name: Configure public access through the free Cloudflare Tunnel
+  ansible.builtin.include_tasks: cloudflare.yml
+  when: cloudflare_enabled | default(false) | bool
