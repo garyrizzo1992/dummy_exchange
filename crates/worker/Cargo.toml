@@ -3,6 +3,7 @@ name = "exchange-worker"
 version.workspace = true
 edition.workspace = true
 [dependencies]
+exchange-config = { path = "../config" }
 anyhow.workspace = true
 axum.workspace = true
 chrono.workspace = true

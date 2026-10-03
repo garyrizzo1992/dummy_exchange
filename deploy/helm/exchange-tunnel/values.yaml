@@ -1,0 +1,8 @@
+enabled: false
+image: cloudflare/cloudflared:2026.9.3
+replicas: 1
+existingSecret: cloudflare-tunnel
+secretKey: token
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 500m, memory: 128Mi }

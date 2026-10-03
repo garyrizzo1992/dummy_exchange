@@ -13,6 +13,9 @@ on:
       - crates/**
       - migrations/**
       - deploy/helm/**
+      - deploy/ingress/**
+      - scripts/check-helm.py
+      - scripts/requirements-helm.txt
       - .github/workflows/application.yml
   push:
     branches: [main]
@@ -22,8 +25,13 @@ on:
       - crates/**
       - migrations/**
       - deploy/helm/**
+      - deploy/ingress/**
+      - scripts/check-helm.py
+      - scripts/requirements-helm.txt
       # The bot updates this file after publishing. Don't start another build.
-      - '!deploy/helm/dummy-exchange/values-dev.yaml'
+      - '!deploy/helm/exchange-api/values-dev.yaml'
+      - '!deploy/helm/exchange-worker/values-dev.yaml'
+      - '!deploy/helm/exchange/values-dev.yaml'
       - .github/workflows/application.yml
   workflow_dispatch: # Also lets us start a run from the Actions tab.
 
@@ -53,13 +61,21 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo build --workspace --release --locked
-      - run: helm lint deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml
-      - run: helm template exchange deploy/helm/dummy-exchange --values deploy/helm/dummy-exchange/values-dev.yaml > /dev/null
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r scripts/requirements-helm.txt
+      - name: Install Kubernetes manifest validator
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz -o /tmp/kubeconform.tar.gz
+          sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
+      - run: python scripts/check-helm.py
 
   # For pull requests, build all three images in parallel without uploading them.
   verify-images:
     if: github.event_name == 'pull_request'
     needs: test
+    timeout-minutes: 60
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -70,11 +86,13 @@ jobs:
           - dockerfile: crates/simulator/Dockerfile
     steps:
       - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
           push: false
 
   # After tests pass on main, upload the images to Docker Hub.
@@ -82,7 +100,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     # Pass the exact image versions to the promotion job.
     outputs:
       api_digest: ${{ steps.api.outputs.digest }}
@@ -95,12 +113,14 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - id: api
         uses: docker/build-push-action@v7
         with:
           context: .
           file: crates/api/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           # The tag points back to the source commit.
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-api:sha-${{ github.sha }}
@@ -112,6 +132,7 @@ jobs:
         with:
           context: .
           file: crates/worker/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-worker:sha-${{ github.sha }}
           provenance: mode=max
@@ -121,6 +142,7 @@ jobs:
         with:
           context: .
           file: crates/simulator/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-simulator:sha-${{ github.sha }}
           provenance: mode=max
@@ -148,15 +170,17 @@ jobs:
           SIMULATOR_DIGEST: ${{ needs.publish-images.outputs.simulator_digest }}
         run: |
           # Digests pin the exact images, even if someone changes a tag later.
-          yq -i '.imageRegistry = strenv(IMAGE_REGISTRY)' deploy/helm/dummy-exchange/values-dev.yaml
-          yq -i '.api.image.digest = strenv(API_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
-          yq -i '.worker.image.digest = strenv(WORKER_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
-          yq -i '.simulator.image.digest = strenv(SIMULATOR_DIGEST)' deploy/helm/dummy-exchange/values-dev.yaml
+          for chart in exchange-api exchange-worker exchange; do
+            yq -i '.imageRegistry = strenv(IMAGE_REGISTRY)' "deploy/helm/$chart/values-dev.yaml"
+          done
+          yq -i '.image.digest = strenv(API_DIGEST)' deploy/helm/exchange-api/values-dev.yaml
+          yq -i '.image.digest = strenv(WORKER_DIGEST)' deploy/helm/exchange-worker/values-dev.yaml
+          yq -i '.image.digest = strenv(SIMULATOR_DIGEST)' deploy/helm/exchange/values-dev.yaml
       - name: Commit the desired development release
         run: |
           git config user.name 'dummy-exchange deployment bot'
           git config user.email 'deployment-bot@users.noreply.github.com'
-          git add deploy/helm/dummy-exchange/values-dev.yaml
+          git add deploy/helm/exchange-api/values-dev.yaml deploy/helm/exchange-worker/values-dev.yaml deploy/helm/exchange/values-dev.yaml
           # Commit only if the desired image versions have changed.
           git diff --cached --quiet || git commit -m 'deploy(dev): promote ${{ github.sha }}'
           git push

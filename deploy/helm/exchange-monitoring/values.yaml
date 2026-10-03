@@ -1,0 +1,71 @@
+# Settings owned by this chart. Keep the release name and resource prefix consistent.
+nameOverride: dummy-exchange
+fullnameOverride: ''
+database:
+  host: ''
+  port: 5432
+  name: dummy_exchange
+  user: postgres
+  sslMode: disable
+  secret:
+    name: dummy-exchange-secrets
+    key: postgres-password
+enabled: true
+prometheus:
+  retentionTime: 15d
+  retentionSize: 4GB
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  image: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+  service:
+    type: ClusterIP
+    port: 9090
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ''
+grafana:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  image: grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
+  service:
+    type: ClusterIP
+    port: 3000
+  adminSecret:
+    name: dummy-exchange-monitoring-secrets
+    key: grafana-admin-password
+postgresExporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
+  enabled: true
+redisExporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  image: oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+  enabled: true
+externalSecrets:
+  enabled: false
+  region: eu-milan-1
+  vaultId: ''
+  secretName: ''

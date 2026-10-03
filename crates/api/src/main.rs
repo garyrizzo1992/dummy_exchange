@@ -55,8 +55,7 @@ async fn main() -> anyhow::Result<()> {
         .json()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
-    let database_url = env::var("DATABASE_URL")?;
-    let db = PgPool::connect(&database_url).await?;
+    let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     if env::args().nth(1).as_deref() == Some("migrate") {
         sqlx::migrate!("../../migrations").run(&db).await?;
         return Ok(());

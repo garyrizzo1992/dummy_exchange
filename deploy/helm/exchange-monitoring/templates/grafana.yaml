@@ -1,0 +1,82 @@
+{{- if .Values.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-grafana
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.grafana.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.grafana.service.port }}
+      targetPort: http
+      {{- with .Values.grafana.service.nodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "exchange-monitoring.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-grafana
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/grafana-config.yaml") . | sha256sum }}
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: {{ .Values.grafana.image }}
+          resources:
+            {{- toYaml .Values.grafana.resources | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "grafana.adminSecret.name is required" .Values.grafana.adminSecret.name }}
+                  key: {{ .Values.grafana.adminSecret.key }}
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+          volumeMounts:
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources/prometheus.yaml
+              subPath: prometheus.yaml
+              readOnly: true
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+              readOnly: true
+            - name: dashboard
+              mountPath: /var/lib/grafana/dashboards/exchange-overview.json
+              subPath: exchange-overview.json
+              readOnly: true
+      volumes:
+        - name: provisioning
+          configMap: { name: {{ $name }}-grafana-provisioning }
+        - name: dashboard
+          configMap: { name: {{ $name }}-grafana-dashboard }
+{{- end }}

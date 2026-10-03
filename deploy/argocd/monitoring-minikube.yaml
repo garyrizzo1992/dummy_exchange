@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dummy-exchange-observability-minikube
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dummy-exchange
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: false
+      selfHeal: true
+    retry:
+      limit: 5
+      refresh: true
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true
+  source:
+    repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-monitoring
+    helm:
+      releaseName: dummy-exchange
+      valueFiles:
+      - values.yaml
+      - values-minikube.yaml

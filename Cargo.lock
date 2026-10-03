@@ -460,6 +460,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "exchange-config",
  "exchange-domain",
  "jsonwebtoken",
  "metrics",
@@ -475,6 +476,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "exchange-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sqlx",
 ]
 
 [[package]]
@@ -497,6 +506,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "exchange-config",
  "metrics",
  "metrics-exporter-prometheus",
  "rand 0.9.5",
@@ -517,6 +527,7 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
+ "exchange-config",
  "exchange-domain",
  "metrics",
  "metrics-exporter-prometheus",

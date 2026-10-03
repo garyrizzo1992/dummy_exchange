@@ -1,0 +1,55 @@
+{{- if and .Values.enabled .Values.postgresExporter.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-postgres-exporter
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres-exporter
+  template:
+    metadata:
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-exporter
+    spec:
+      containers:
+        - name: postgres-exporter
+          image: {{ .Values.postgresExporter.image }}
+          resources:
+            {{- toYaml .Values.postgresExporter.resources | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 9187
+          env:
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "database.secret.name is required" .Values.database.secret.name }}
+                  key: {{ .Values.database.secret.key }}
+            - name: DATA_SOURCE_URI
+              value: {{ printf "%s:%v/%s?sslmode=%s" (include "exchange-monitoring.databaseHost" .) .Values.database.port .Values.database.name .Values.database.sslMode | quote }}
+            - name: DATA_SOURCE_USER
+              value: {{ .Values.database.user | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-postgres-exporter
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: metrics
+  selector:
+    {{- include "exchange-monitoring.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+{{- end }}

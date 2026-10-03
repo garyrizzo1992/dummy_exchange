@@ -24,8 +24,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     // `?` returns an error from this function if loading the URL or connecting fails.
-    let database_url = env::var("DATABASE_URL")?;
-    let db = PgPool::connect(&database_url).await?;
+    let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     let seed_text = env::var("SIMULATION_SEED").unwrap_or_else(|_| "42".to_string());
     let seed = seed_text.parse().unwrap_or(42);
     let mut rng = StdRng::seed_from_u64(seed);

@@ -1,0 +1,50 @@
+# Settings owned by this chart. Keep the release name and resource prefix consistent.
+nameOverride: dummy-exchange
+fullnameOverride: ''
+database:
+  host: ''
+  port: 5432
+  name: dummy_exchange
+  user: postgres
+  sslMode: disable
+  secret:
+    name: dummy-exchange-secrets
+    key: postgres-password
+imageRegistry: docker.io/garyrizzo1992
+imagePullPolicy: IfNotPresent
+image:
+  name: dummy-exchange-api
+  tag: main
+  digest: ''
+replicas: 1
+service:
+  type: ClusterIP
+  port: 3000
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+migrations:
+  enabled: true
+  activeDeadlineSeconds: 300
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+jwtSecret:
+  name: dummy-exchange-api-secrets
+  key: jwt-secret
+externalSecrets:
+  enabled: false
+  region: eu-milan-1
+  vaultId: ''
+  secretName: ''
+
+# Temporary environment overrides for migrations using older images.
+extraEnv: []

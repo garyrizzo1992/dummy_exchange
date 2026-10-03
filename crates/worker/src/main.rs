@@ -22,8 +22,7 @@ async fn main() -> anyhow::Result<()> {
             warn!(%error, "worker metrics server stopped");
         }
     });
-    let database_url = env::var("DATABASE_URL")?;
-    let db = PgPool::connect(&database_url).await?;
+    let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     let worker_id = env::var("WORKER_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
     loop {
         if let Err(error) = tick(&db, &worker_id).await {

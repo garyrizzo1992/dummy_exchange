@@ -1,0 +1,6 @@
+apiVersion: v2
+name: exchange-tunnel
+description: Optional outbound Cloudflare connector for private Oracle nodes
+type: application
+version: 0.1.0
+appVersion: "2026.9.3"

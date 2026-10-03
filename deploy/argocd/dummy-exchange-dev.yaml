@@ -6,17 +6,9 @@ metadata:
   annotations:
     argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
-    targetRevision: main
-    path: deploy/helm/dummy-exchange
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-dev.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: dummy-exchange
@@ -27,11 +19,36 @@ spec:
       selfHeal: true
     retry:
       limit: 5
+      refresh: true
       backoff:
         duration: 5s
         factor: 2
         maxDuration: 3m
-      refresh: true
     syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+    - CreateNamespace=true
+    - ServerSideApply=true
+  sources:
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-api
+    helm:
+      releaseName: dummy-exchange-dev
+      valueFiles:
+      - values.yaml
+      - values-dev.yaml
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-worker
+    helm:
+      releaseName: dummy-exchange-dev
+      valueFiles:
+      - values.yaml
+      - values-dev.yaml
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange
+    helm:
+      releaseName: dummy-exchange-dev
+      valueFiles:
+      - values.yaml
+      - values-dev.yaml

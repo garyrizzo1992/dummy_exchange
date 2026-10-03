@@ -1,0 +1,5 @@
+# OCI development settings. Image digests are promoted by GitHub Actions.
+imageRegistry: docker.io/garyrizzo1992
+image:
+  tag: main
+  digest: sha256:1a930c7de14f5194c3e442517d7ab43ab0c500f273ba242e18cfc09da858f84d

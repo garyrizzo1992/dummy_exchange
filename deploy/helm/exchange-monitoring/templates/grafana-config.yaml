@@ -1,0 +1,40 @@
+{{- if .Values.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-grafana-provisioning
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ $name }}-prometheus:9090
+        isDefault: true
+        editable: false
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Exchange
+        orgId: 1
+        folder: Exchange
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-grafana-dashboard
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+data:
+  exchange-overview.json: |
+    {{- .Files.Get "files/exchange-overview.json" | nindent 4 }}
+{{- end }}

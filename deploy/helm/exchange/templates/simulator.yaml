@@ -1,0 +1,68 @@
+{{- $name := include "exchange.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-simulator
+  labels:
+    {{- include "exchange.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: metrics
+      port: 3002
+      targetPort: metrics
+  selector:
+    {{- include "exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: simulator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-simulator
+  labels:
+    {{- include "exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: simulator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: simulator
+  template:
+    metadata:
+      labels:
+        {{- include "exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: simulator
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: simulator
+          image: {{ include "exchange.applicationImage" (dict "root" . "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - name: metrics
+              containerPort: 3002
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: SIMULATOR_METRICS_BIND
+              value: 0.0.0.0:3002
+            - name: SIMULATION_SEED
+              value: {{ .Values.simulationSeed | quote }}
+            {{- include "exchange.databaseEnv" . | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

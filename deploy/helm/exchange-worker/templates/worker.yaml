@@ -1,0 +1,70 @@
+{{- $name := include "exchange-worker.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-worker
+  labels:
+    {{- include "exchange-worker.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: 3001
+      targetPort: metrics
+  selector:
+    {{- include "exchange-worker.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-worker
+  labels:
+    {{- include "exchange-worker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "exchange-worker.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "exchange-worker.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: {{ include "exchange-worker.applicationImage" (dict "root" . "image" .Values.image) }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities: { drop: ["ALL"] }
+          ports:
+            - name: metrics
+              containerPort: 3001
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: WORKER_METRICS_BIND
+              value: 0.0.0.0:3001
+            {{- include "exchange-worker.databaseEnv" . | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

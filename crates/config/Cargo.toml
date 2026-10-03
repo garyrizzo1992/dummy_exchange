@@ -1,0 +1,8 @@
+[package]
+name = "exchange-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+sqlx.workspace = true

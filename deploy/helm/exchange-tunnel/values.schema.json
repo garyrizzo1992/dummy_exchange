@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "replicas": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "image": {
+      "type": "string",
+      "minLength": 1
+    },
+    "existingSecret": {
+      "type": "string",
+      "minLength": 1
+    },
+    "secretKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resources": {
+      "type": "object"
+    }
+  }
+}

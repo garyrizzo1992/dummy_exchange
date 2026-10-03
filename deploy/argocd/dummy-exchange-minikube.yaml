@@ -3,25 +3,52 @@ kind: Application
 metadata:
   name: dummy-exchange
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
-    targetRevision: main
-    path: deploy/helm/dummy-exchange
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-minikube.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: dummy-exchange
   syncPolicy:
     automated:
+      enabled: true
       prune: true
       selfHeal: true
+    retry:
+      limit: 5
+      refresh: true
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
     syncOptions:
-      - CreateNamespace=true
-      - ServerSideApply=true
+    - CreateNamespace=true
+    - ServerSideApply=true
+  sources:
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-api
+    helm:
+      releaseName: dummy-exchange
+      valueFiles:
+      - values.yaml
+      - values-minikube.yaml
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-worker
+    helm:
+      releaseName: dummy-exchange
+      valueFiles:
+      - values.yaml
+      - values-minikube.yaml
+  - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange
+    helm:
+      releaseName: dummy-exchange
+      valueFiles:
+      - values.yaml
+      - values-minikube.yaml

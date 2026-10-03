@@ -1,0 +1,29 @@
+# Settings owned by this chart. Keep the release name and resource prefix consistent.
+nameOverride: dummy-exchange
+fullnameOverride: ''
+database:
+  host: ''
+  port: 5432
+  name: dummy_exchange
+  user: postgres
+  sslMode: disable
+  secret:
+    name: dummy-exchange-secrets
+    key: postgres-password
+imageRegistry: docker.io/garyrizzo1992
+imagePullPolicy: IfNotPresent
+image:
+  name: dummy-exchange-simulator
+  tag: main
+  digest: ''
+simulationSeed: '42'
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Temporary environment overrides for migrations using older images.
+extraEnv: []

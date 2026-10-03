@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: exchange-tunnel-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-tunnel
+    helm:
+      releaseName: exchange-tunnel-dev
+      valuesObject:
+        enabled: true
+        replicas: 2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
