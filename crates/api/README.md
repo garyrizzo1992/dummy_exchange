@@ -68,3 +68,10 @@ cancelled orders, and the value of submitted orders. Order metrics use only
 `instrument`, `side`, and `order_type` labels.
 
 Run `exchange-api migrate` once before deploying API replicas for a release.
+
+### Kubernetes database credentials
+
+The chart sets `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and
+`PGSSLMODE`. The shared `exchange-config` crate passes credentials directly to
+SQLx, including passwords containing URL punctuation. `DATABASE_URL` remains
+supported and takes precedence for existing Compose and local environments.

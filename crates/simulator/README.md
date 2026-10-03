@@ -34,3 +34,10 @@ For local development, the simulator loads `.env` from the project root.
 The simulator creates a system market-maker account with simulated inventory.
 It updates `market_state` and system orders. The matching worker handles trades
 and account balance updates.
+
+### Kubernetes database credentials
+
+The chart sets `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and
+`PGSSLMODE`. The shared `exchange-config` crate passes credentials directly to
+SQLx, including passwords containing URL punctuation. `DATABASE_URL` remains
+supported and takes precedence for existing Compose and local environments.

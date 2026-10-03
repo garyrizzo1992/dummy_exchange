@@ -9,6 +9,10 @@ param(
 
     [string]$ApplicationSecretName = 'dummy-exchange-secrets',
 
+    [string]$ApiSecretName = 'dummy-exchange-api-secrets',
+
+    [string]$MonitoringSecretName = 'dummy-exchange-monitoring-secrets',
+
     [switch]$StartMinikube,
 
     [ValidateSet('docker', 'hyperv', 'virtualbox')]
@@ -63,21 +67,23 @@ if ([string]::IsNullOrWhiteSpace($applicationNamespaceExists)) {
 }
 
 # These values are deliberately only suitable for the local test environment.
-# `kubectl apply` makes bootstrap repeatable and replaces the prior test secret.
-Write-Host "Creating test application secret '$ApplicationSecretName' in '$ApplicationNamespace'..."
-$secretManifest = & kubectl -n $ApplicationNamespace create secret generic $ApplicationSecretName `
-    '--from-literal=postgres-password=password' `
-    '--from-literal=jwt-secret=local-development-secret-change-before-any-shared-use' `
-    '--from-literal=grafana-admin-password=admin' `
-    '--dry-run=client' `
-    '-o' 'yaml'
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not generate application secret '$ApplicationSecretName'."
-}
-
-$secretManifest | & kubectl apply -f -
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not apply application secret '$ApplicationSecretName'."
+# Each chart owns its own credentials; business services share the database key.
+$testSecrets = @(
+    @{ Name = $ApplicationSecretName; Value = '--from-literal=postgres-password=password' },
+    @{ Name = $ApiSecretName; Value = '--from-literal=jwt-secret=local-development-secret-change-before-any-shared-use' },
+    @{ Name = $MonitoringSecretName; Value = '--from-literal=grafana-admin-password=admin' }
+)
+foreach ($testSecret in $testSecrets) {
+    Write-Host "Creating test secret '$($testSecret.Name)' in '$ApplicationNamespace'..."
+    $secretManifest = & kubectl -n $ApplicationNamespace create secret generic $testSecret.Name `
+        $testSecret.Value '--dry-run=client' '-o' 'yaml'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not generate test secret '$($testSecret.Name)'."
+    }
+    $secretManifest | & kubectl apply -f -
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not apply test secret '$($testSecret.Name)'."
+    }
 }
 
 $manifest = "https://raw.githubusercontent.com/argoproj/argo-cd/$Version/manifests/install.yaml"
@@ -85,6 +91,14 @@ Write-Host "Installing Argo CD $Version into '$Namespace'..."
 & kubectl apply -n $Namespace --server-side --force-conflicts -f $manifest
 if ($LASTEXITCODE -ne 0) {
     throw 'Argo CD installation failed.'
+}
+
+# Independent infrastructure applications use the original Helm release name.
+# Annotation tracking preserves Helm's instance labels and immutable selectors.
+& kubectl -n $Namespace patch configmap argocd-cm --type merge `
+    --patch-file (Join-Path $PSScriptRoot '../deploy/argocd/patches/tracking.yaml')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not configure Argo CD resource tracking.'
 }
 
 Write-Host 'Waiting for the Argo CD API server...'

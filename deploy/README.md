@@ -1,9 +1,10 @@
 # Kubernetes and Argo CD deployment
 
-`helm/dummy-exchange` packages the API, matching workers, market simulator,
-PostgreSQL, optional Redis, Prometheus and Grafana. You can scale the matching
-workers by adding replicas. `argocd/dummy-exchange-minikube.yaml` is an Argo CD
-`Application` that installs the chart in the cluster where Argo CD runs.
+The business charts are `helm/exchange-api`, `helm/exchange-worker` and
+`helm/exchange` (the market simulator). PostgreSQL and monitoring each have
+their own chart. The business Argo application renders all three sources in
+one sync, with a shared migration hook before their Deployments. See the
+[Helm guide](helm/README.md) for configuration and existing-release transfers.
 
 ## OCI development cluster
 
@@ -11,8 +12,13 @@ workers by adding replicas. `argocd/dummy-exchange-minikube.yaml` is an Argo CD
 using exact image digests and `values-dev.yaml`. Terraform and Ansible
 set up Argo CD and External Secrets. OCI Vault stores the PostgreSQL password,
 JWT secret and Grafana password. Git contains only their identifiers. Services
-use private ClusterIPs. See [continuous delivery](../docs/cicd.md) for setup
+use private ClusterIPs. See [deployment](../README.md#deployment) for setup
 instructions and the limits of local-disk storage.
+
+The public API uses `api.garyrizzo.dev` through a free Cloudflare Tunnel and
+direct routing to the private API Service. DNS and tunnel routing belong to Terraform. See
+[Cloudflare setup](../provisioning/terraform/docs/cloudflare.md) for credentials,
+deployment and verification.
 
 The following steps are for the separate local Minikube environment.
 
@@ -22,8 +28,8 @@ Push the three application images to Docker Hub first. The chart uses
 `docker.io/garyrizzo1992` by default. For a different Docker Hub account, change
 `imageRegistry` in a committed environment values file or in the Argo CD Application.
 
-The installer creates the `dummy-exchange` namespace and its required
-`dummy-exchange-secrets` secret. Its fixed values (`password`, a local JWT
+The installer creates the `dummy-exchange` namespace and separate database,
+API JWT and monitoring Secrets. Its fixed values (`password`, a local JWT
 secret, and `admin`) are only for local testing.
 
 For a real environment, keep secret values out of Git. Use a sealed-secret,
@@ -33,6 +39,10 @@ External Secrets Operator or your platform's secret manager.
 
 ```powershell
 .\scripts\install-argocd.ps1 -StartMinikube
+kubectl apply -f deploy/argocd/postgres-minikube.yaml
+kubectl -n argocd wait application/dummy-exchange-data-minikube --for=jsonpath='{.status.sync.status}'=Synced --timeout=10m
+kubectl -n argocd wait application/dummy-exchange-data-minikube --for=jsonpath='{.status.health.status}'=Healthy --timeout=10m
+kubectl apply -f deploy/argocd/monitoring-minikube.yaml
 kubectl apply -f deploy/argocd/dummy-exchange-minikube.yaml
 ```
 
@@ -44,7 +54,8 @@ cluster.
 
 Argo CD keeps the cluster in sync with the chart on `main`. It creates the
 `dummy-exchange` namespace if needed, corrects manual changes in the cluster,
-and deletes resources removed from Git. The Minikube values expose these NodePorts:
+and prunes business resources removed from Git. Database and monitoring pruning
+is disabled. The Minikube values expose these NodePorts:
 
 | Component | Address |
 |---|---|
@@ -54,7 +65,7 @@ and deletes resources removed from Git. The Minikube values expose these NodePor
 
 Run `minikube service exchange-api -n dummy-exchange --url` if you cannot reach a
 NodePort from your computer. Log in to Grafana with `admin` and the
-`grafana-admin-password` secret value.
+`grafana-admin-password` value in `dummy-exchange-monitoring-secrets`.
 
 To open the Argo CD web interface without installing its CLI:
 
@@ -82,6 +93,23 @@ cluster.
 Check the rendered Kubernetes resources before deploying with Argo CD:
 
 ```powershell
-helm lint deploy/helm/dummy-exchange
-helm template exchange deploy/helm/dummy-exchange -f deploy/helm/dummy-exchange/values-minikube.yaml | kubectl apply --dry-run=server -f -
+helm lint deploy/helm/exchange-api
+helm template dummy-exchange deploy/helm/exchange-api -f deploy/helm/exchange-api/values-minikube.yaml | kubectl apply --dry-run=server -f -
 ```
+
+## Reviewed chart layout
+
+The five charts replace the old bundled and separated compatibility charts.
+Existing installations require the staged ownership and credential transfer in
+[the Helm guide](helm/README.md). Ansible stops on an existing legacy application
+until that transfer is complete. Deployment ordering and migrations require
+Argo CD; ordinary `helm upgrade` does not provide this lifecycle.
+
+Validate all supported profiles locally:
+
+```powershell
+python -m pip install -r scripts/requirements-helm.txt
+python scripts/check-helm.py
+```
+
+Install `kubeconform` to include strict Kubernetes schema validation, as CI does.

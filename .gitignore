@@ -13,3 +13,6 @@ crash.log
 !*.tfvars.example
 !provisioning/terraform/envs/dev.tfvars
 terraform/backend.hcl
+
+
+provisioning/.cloudflare

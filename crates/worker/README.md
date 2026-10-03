@@ -39,3 +39,10 @@ Another worker can take the market's lock when it is released.
 `/metrics` reports matching cycles and errors, total trades, user buy and sell
 trades, and summaries of trade value. Trade metrics use only instrument labels,
 so adding workers does not create an unbounded number of label values.
+
+### Kubernetes database credentials
+
+The chart sets `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and
+`PGSSLMODE`. The shared `exchange-config` crate passes credentials directly to
+SQLx, including passwords containing URL punctuation. `DATABASE_URL` remains
+supported and takes precedence for existing Compose and local environments.
