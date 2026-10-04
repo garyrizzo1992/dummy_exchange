@@ -34,3 +34,13 @@ at a recorded migration snapshot; transitioning from simulated to Coinbase
 prices resets that baseline once, atomically with all market updates, to prevent
 invented price differences appearing as profit. The tracking timestamp is shown
 on each row. Pod restarts do not reset balances or live-price baselines.
+
+## Market depth
+
+`liquidityNotionalUsd` controls simulated book depth in USD per market. The near
+bid/ask levels each offer $100,000 by default; the outer levels each offer five
+times that amount. Quantities are computed from the reference price for each
+coin. This avoids using BTC-sized quantities for ETH and SOL, which previously
+made large market orders drain slowly. This remains simulated liquidity; orders
+larger than available depth can partially fill. Market orders show `Market` in
+the UI instead of their internal reservation cap or sell sentinel.

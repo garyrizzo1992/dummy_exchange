@@ -329,7 +329,7 @@ async fn open_orders(
 ) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     let user_id = authenticated_user(&headers, &app)?;
     let rows = sqlx::query(
-        "SELECT id,instrument,side,quantity,remaining,limit_price,status,created_at
+        "SELECT id,instrument,side,order_type,quantity,remaining,limit_price,status,created_at
          FROM orders
          WHERE user_id=$1 AND status IN ('open','partially_filled')
          ORDER BY created_at DESC LIMIT 100",
@@ -347,7 +347,8 @@ async fn open_orders(
             "side": row.get::<String, _>("side"),
             "quantity": row.get::<Decimal, _>("quantity"),
             "remaining": row.get::<Decimal, _>("remaining"),
-            "limit_price": row.get::<Option<Decimal>, _>("limit_price"),
+            "order_type": row.get::<String, _>("order_type"),
+            "limit_price": if row.get::<String,_>("order_type")=="market" {None} else {row.get::<Option<Decimal>, _>("limit_price")},
             "status": row.get::<String, _>("status"),
         }));
     }

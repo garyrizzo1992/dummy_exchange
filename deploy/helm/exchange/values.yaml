@@ -42,3 +42,4 @@ traders:
   intervalMs: 2000
 
 priceSource: simulated
+liquidityNotionalUsd: 100000

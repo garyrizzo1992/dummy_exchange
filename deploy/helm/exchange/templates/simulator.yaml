@@ -64,6 +64,8 @@ spec:
               value: info
             - name: SIMULATOR_METRICS_BIND
               value: 0.0.0.0:3002
+            - name: LIQUIDITY_NOTIONAL_USD
+              value: {{ .Values.liquidityNotionalUsd | quote }}
             - name: PRICE_SOURCE
               value: {{ .Values.priceSource | quote }}
             - name: SIMULATION_SEED

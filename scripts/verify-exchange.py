@@ -92,6 +92,19 @@ try:
  assert first[0]==201 and second[0]==200 and first[1]['id']==second[1]['id'],(first,second)
  assert req('/v1/orders/'+first[1]['id']+'/cancel',{},token)[0]==200
  assert req('/v1/accounts/balances',token=token)[1]==before
+ # Market orders expose a type, not internal reservation/sentinel prices.
+ market=dict(valid,client_order_id='market-display-buy',order_type='market',limit_price=None)
+ placed=req('/v1/orders',market,token)[1]['id']
+ shown=next(o for o in req('/v1/orders',token=token)[1] if o['id']==placed)
+ assert shown['order_type']=='market' and shown['limit_price'] is None
+ assert req('/v1/orders/'+placed+'/cancel',{},token)[0]==200
+ sql("UPDATE accounts SET available=1 WHERE user_id='"+uid+"' AND currency='ETH'")
+ market.update(client_order_id='market-display-sell',instrument='ETH-USD',side='sell',quantity='0.1')
+ placed=req('/v1/orders',market,token)[1]['id']
+ shown=next(o for o in req('/v1/orders',token=token)[1] if o['id']==placed)
+ assert shown['order_type']=='market' and shown['limit_price'] is None
+ assert req('/v1/orders/'+placed+'/cancel',{},token)[0]==200
+ sql("UPDATE accounts SET available=0 WHERE user_id='"+uid+"' AND currency='ETH'")
  # Bulk cancellation releases both quote and base reservations, only for the owner.
  sql("UPDATE accounts SET available=1 WHERE user_id='"+uid+"' AND currency='ETH'")
  funded=req('/v1/accounts/balances',token=token)[1]
@@ -138,6 +151,21 @@ try:
  assert sql("SELECT count(*) FROM accounts WHERE available < 0 OR reserved < 0")=='0'
  assert sql("SELECT count(*) FROM orders WHERE user_id='"+uid+"' AND is_system")=='0'
  assert sql("SELECT count(*) FROM fills WHERE price<=0 OR quantity<=0")=='0'
+ # Large market buys/sells must fill quickly in every market, including ETH/SOL.
+ from decimal import Decimal, ROUND_DOWN
+ for symbol in ['BTC-USD','ETH-USD','SOL-USD']:
+  price=Decimal(sql("SELECT reference_price FROM market_state WHERE instrument='"+symbol+"'"))
+  quantity=str((Decimal(50000)/price).quantize(Decimal('0.00000001'),rounding=ROUND_DOWN))
+  for side in ['buy','sell']:
+   body={'client_order_id':str(uuid.uuid4()),'instrument':symbol,'side':side,'order_type':'market','quantity':quantity,'limit_price':None}
+   accepted=req('/v1/orders',body,token);assert accepted[0]==201,accepted
+   oid=accepted[1]['id']
+   for _ in range(40):
+    if sql("SELECT status FROM orders WHERE id='"+oid+"'")=='filled':break
+    time.sleep(0.2)
+   else:raise AssertionError('Market order did not fill promptly: '+symbol+' '+side)
+   assert sql("SELECT count(*) FROM fills WHERE (maker_order_id='"+oid+"' OR taker_order_id='"+oid+"') AND price<=0")=='0'
+ assert sql("SELECT count(*) FROM accounts WHERE available<0 OR reserved<0")=='0'
  assert req('/v1/simulation')[1]['active']==1
  assert int(sql("SELECT count(*) FROM orders WHERE user_id='"+uid+"' AND trace_context ? 'traceparent'"))>0
  print('Passed: password migration, auth limits, body limits, negative-price exploit, idempotency/refunds, exclusive trader ownership, durable account restart, real fills and nonnegative balances.')

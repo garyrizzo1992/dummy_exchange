@@ -48,6 +48,13 @@ async fn main() -> anyhow::Result<()> {
     } else {
         None
     };
+    let liquidity = env::var("LIQUIDITY_NOTIONAL_USD")
+        .unwrap_or_else(|_| "100000".into())
+        .parse::<Decimal>()?;
+    anyhow::ensure!(
+        liquidity > Decimal::ZERO && liquidity <= Decimal::from(1_000_000),
+        "invalid liquidity notional"
+    );
     bootstrap_market_maker(&db).await?;
     if live.is_some() {
         metrics::gauge!("market_price_feed_last_success_timestamp_seconds").set(0.0);
@@ -55,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         sqlx::query("UPDATE orders SET status='cancelled' WHERE is_system=true AND status IN ('open','partially_filled')").execute(&db).await?;
     }
     loop {
-        if let Err(error) = tick(&db, &mut rng, live.as_ref()).await {
+        if let Err(error) = tick(&db, &mut rng, live.as_ref(), liquidity).await {
             metrics::counter!("market_simulator_errors_total").increment(1);
             warn!(%error, "simulation tick failed");
             metrics::counter!("market_price_feed_errors_total").increment(1);
@@ -99,7 +106,12 @@ async fn bootstrap_market_maker(db: &PgPool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn tick(db: &PgPool, rng: &mut StdRng, live: Option<&reqwest::Client>) -> anyhow::Result<()> {
+async fn tick(
+    db: &PgPool,
+    rng: &mut StdRng,
+    live: Option<&reqwest::Client>,
+    liquidity: Decimal,
+) -> anyhow::Result<()> {
     let states =
         sqlx::query("SELECT instrument,reference_price FROM market_state ORDER BY instrument")
             .fetch_all(db)
@@ -158,19 +170,14 @@ async fn tick(db: &PgPool, rng: &mut StdRng, live: Option<&reqwest::Client>) -> 
         .execute(&mut *tx)
         .await?;
         let base = symbol.split('-').next().unwrap();
+        // Equal USD depth across coins, rather than BTC-sized quantities for ETH/SOL.
+        let small = (liquidity / next_price).round_dp(8);
+        let large = (liquidity * Decimal::from(5) / next_price).round_dp(8);
         for (side, price, quantity) in [
-            ("buy", next_price * Decimal::new(998, 3), Decimal::new(2, 2)),
-            ("buy", next_price * Decimal::new(995, 3), Decimal::new(5, 2)),
-            (
-                "sell",
-                next_price * Decimal::new(1002, 3),
-                Decimal::new(2, 2),
-            ),
-            (
-                "sell",
-                next_price * Decimal::new(1005, 3),
-                Decimal::new(5, 2),
-            ),
+            ("buy", next_price * Decimal::new(998, 3), small),
+            ("buy", next_price * Decimal::new(995, 3), large),
+            ("sell", next_price * Decimal::new(1002, 3), small),
+            ("sell", next_price * Decimal::new(1005, 3), large),
         ] {
             let id = Uuid::new_v4();
             sqlx::query(

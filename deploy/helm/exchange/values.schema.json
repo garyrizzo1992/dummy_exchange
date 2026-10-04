@@ -221,6 +221,11 @@
         "simulated",
         "coinbase"
       ]
+    },
+    "liquidityNotionalUsd": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000000
     }
   },
   "additionalProperties": false
