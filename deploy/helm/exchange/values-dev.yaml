@@ -2,11 +2,10 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:35dd54ece904a49b33736d5bd63ed542336c549d001537d7a6b06b1cf60751e7
+  digest: sha256:bb5ba640f5035aa906a0296a84a9e5bc2a9c63fe08260020c2bb7c6aa2a6191c
 tracing:
   enabled: true
 # Enabled atomically with the image that supports trader mode.
 traders:
   enabled: true
-
 priceSource: coinbase
