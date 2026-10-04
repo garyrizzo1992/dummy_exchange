@@ -2,7 +2,7 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:bb5ba640f5035aa906a0296a84a9e5bc2a9c63fe08260020c2bb7c6aa2a6191c
+  digest: sha256:e8b5723075c3ea7aa0efb60306fa3c9dffa37f55d040176f1e7a72b3ddffe5c7
 tracing:
   enabled: true
 # Enabled atomically with the image that supports trader mode.
