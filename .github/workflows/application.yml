@@ -107,17 +107,22 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: false
 
-  # After tests pass on main, upload the images to Docker Hub.
+  # Build each architecture on its native runner, then combine immutable digests.
   publish-images:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    # Pass the exact image versions to the promotion job.
-    outputs:
-      api_digest: ${{ steps.api.outputs.digest }}
-      worker_digest: ${{ steps.worker.outputs.digest }}
-      simulator_digest: ${{ steps.simulator.outputs.digest }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, worker, simulator]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
       - uses: docker/login-action@v3
@@ -125,46 +130,73 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - id: api
+      - id: image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: crates/api/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          file: crates/${{ matrix.image }}/Dockerfile
+          platforms: linux/${{ matrix.arch }}
           push: true
-          # The tag points back to the source commit.
-          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-api:sha-${{ github.sha }}
-          # Include how the image was built and what software it contains.
+          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-${{ matrix.image }}:sha-${{ github.sha }}-${{ matrix.arch }}
           provenance: mode=max
           sbom: true
-      - id: worker
-        uses: docker/build-push-action@v7
+      - name: Record architecture digest
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          DIGEST_FILE: ${{ matrix.image }}-${{ matrix.arch }}
+        run: |
+          mkdir -p /tmp/digests
+          printf '%s' "$IMAGE_DIGEST" > "/tmp/digests/$DIGEST_FILE"
+      - uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: crates/worker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-worker:sha-${{ github.sha }}
-          provenance: mode=max
-          sbom: true
-      - id: simulator
-        uses: docker/build-push-action@v7
+          name: digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish-manifests:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: publish-images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      api_digest: ${{ steps.manifests.outputs.api_digest }}
+      worker_digest: ${{ steps.manifests.outputs.worker_digest }}
+      simulator_digest: ${{ steps.manifests.outputs.simulator_digest }}
+    steps:
+      - uses: docker/login-action@v3
         with:
-          context: .
-          file: crates/simulator/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-simulator:sha-${{ github.sha }}
-          provenance: mode=max
-          sbom: true
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+      - id: manifests
+        name: Publish multi-platform images
+        env:
+          IMAGE_REGISTRY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          for image in api worker simulator; do
+            repository="$IMAGE_REGISTRY/dummy-exchange-$image"
+            amd64=$(cat "/tmp/digests/$image-amd64")
+            arm64=$(cat "/tmp/digests/$image-arm64")
+            tag="$repository:sha-$SOURCE_SHA"
+            docker buildx imagetools create --tag "$tag" "$repository@$amd64" "$repository@$arm64"
+            digest=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$tag" | jq -r '.digest')
+            test "$digest" != null
+            echo "${image}_digest=$digest" >> "$GITHUB_OUTPUT"
+          done
 
   # Record the new images in Git. Argo CD handles the Kubernetes rollout.
   # This job doesn't wait for that rollout to finish; check Argo CD afterwards.
   promote-dev:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: publish-images
+    needs: publish-manifests
     runs-on: ubuntu-24.04
     environment: dev
     permissions:
@@ -177,9 +209,9 @@ jobs:
       - name: Record the immutable image digests
         env:
           IMAGE_REGISTRY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}
-          API_DIGEST: ${{ needs.publish-images.outputs.api_digest }}
-          WORKER_DIGEST: ${{ needs.publish-images.outputs.worker_digest }}
-          SIMULATOR_DIGEST: ${{ needs.publish-images.outputs.simulator_digest }}
+          API_DIGEST: ${{ needs.publish-manifests.outputs.api_digest }}
+          WORKER_DIGEST: ${{ needs.publish-manifests.outputs.worker_digest }}
+          SIMULATOR_DIGEST: ${{ needs.publish-manifests.outputs.simulator_digest }}
         run: |
           # Digests pin the exact images, even if someone changes a tag later.
           for chart in exchange-api exchange-worker exchange; do
