@@ -1,27 +1,28 @@
-//! HTTP endpoints for users, orders, balances and market data.
-//! Each handler reads a request, uses PostgreSQL, and returns a response.
+mod security;
+
+// HTTP endpoints for users, orders, balances and market data.
+// Each handler reads a request, uses PostgreSQL, and returns a response.
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{HeaderMap, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use exchange_domain::{NewOrder, OrderType, Side};
+use exchange_domain::NewOrder;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use std::{env, sync::Arc, time::Instant};
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     trace::TraceLayer,
 };
-use tracing_subscriber::EnvFilter;
+use tracing::Instrument;
 use uuid::Uuid;
 #[derive(Clone)]
 struct AppState {
@@ -29,6 +30,7 @@ struct AppState {
     // Arc lets request handlers share the same secret without copying it.
     jwt_secret: Arc<String>,
     metrics: PrometheusHandle,
+    security: security::Controls,
 }
 
 #[derive(Deserialize)]
@@ -51,11 +53,12 @@ struct Token {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
-    let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
+    let _telemetry = exchange_config::telemetry::init("exchange-api")?;
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(std::time::Duration::from_secs(3))
+        .connect_with(exchange_config::database::connection_options()?)
+        .await?;
     if env::args().nth(1).as_deref() == Some("migrate") {
         sqlx::migrate!("../../migrations").run(&db).await?;
         return Ok(());
@@ -63,10 +66,8 @@ async fn main() -> anyhow::Result<()> {
     let metrics = PrometheusBuilder::new().install_recorder()?;
     let app = AppState {
         db,
-        jwt_secret: Arc::new(
-            env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "development-secret-change-me-32bytes".into()),
-        ),
+        jwt_secret: Arc::new(security::jwt_secret()?),
+        security: security::Controls::new(),
         metrics,
     };
     let router = Router::new()
@@ -80,9 +81,26 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/orders", get(open_orders))
         .route("/v1/accounts/balances", get(balances))
         .route("/v1/fills", get(fills))
+        .route("/v1/ui", get(frontend))
+        .route("/v1/ui/", get(frontend))
+        .route("/v1/ui/style.css", get(frontend_css))
+        .nest_service(
+            "/v1/ui/pkg",
+            tower_http::services::ServeDir::new(format!(
+                "{}/pkg",
+                env::var("FRONTEND_DIR").unwrap_or_else(|_| "crates/frontend/dist".into())
+            )),
+        )
+        .route("/v1/simulation", get(simulation))
+        .route("/v1/markets/{symbol}/trades", get(recent_trades))
         .route("/v1/instruments", get(instruments))
         .route("/v1/markets/{symbol}/ticker", get(ticker))
         .route("/v1/markets/{symbol}/book", get(order_book))
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            security::protect,
+        ))
+        .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(app)
         .layer(middleware::from_fn(track_request_metrics))
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -90,7 +108,11 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http());
     let bind = env::var("API_BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    axum::serve(listener, router).await?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -112,17 +134,20 @@ async fn track_request_metrics(
 ) -> Response {
     let started = Instant::now();
     let method = request.method().to_string();
-    let response = next.run(request).await;
+    let headers = request
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| value.to_str().ok().map(|v| (key.to_string(), v.to_owned())))
+        .collect();
+    let span = tracing::info_span!("http.request", method=%method, path=%request.uri().path(), trace_id=tracing::field::Empty);
+    exchange_config::telemetry::set_parent(&span, &headers);
+    let response = next.run(request).instrument(span).await;
     let status = response.status().as_u16().to_string();
     metrics::counter!("http_requests_total", "method" => method.clone(), "status" => status)
         .increment(1);
     metrics::histogram!("http_request_duration_seconds", "method" => method)
         .record(started.elapsed().as_secs_f64());
     response
-}
-
-fn hash_password(password: &str) -> String {
-    format!("{:x}", Sha256::digest(password.as_bytes()))
 }
 
 fn authenticated_user(headers: &HeaderMap, app: &AppState) -> Result<Uuid, StatusCode> {
@@ -148,6 +173,9 @@ async fn register(
     State(app): State<AppState>,
     Json(credentials): Json<Credentials>,
 ) -> Result<Json<Token>, StatusCode> {
+    security::validate_credentials(&credentials, true)?;
+    let password_hash =
+        security::password_hash(&app.security, credentials.password.clone()).await?;
     let mut tx = app
         .db
         .begin()
@@ -157,7 +185,7 @@ async fn register(
     sqlx::query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)")
         .bind(id)
         .bind(&credentials.email)
-        .bind(hash_password(&credentials.password))
+        .bind(password_hash)
         .execute(&mut *tx)
         .await
         .map_err(|_| StatusCode::CONFLICT)?;
@@ -186,14 +214,32 @@ async fn login(
     State(app): State<AppState>,
     Json(credentials): Json<Credentials>,
 ) -> Result<Json<Token>, StatusCode> {
-    let row = sqlx::query("SELECT id FROM users WHERE email=$1 AND password_hash=$2")
-        .bind(credentials.email)
-        .bind(hash_password(&credentials.password))
+    security::validate_credentials(&credentials, false)?;
+    let row = sqlx::query("SELECT id,password_hash FROM users WHERE email=$1")
+        .bind(&credentials.email)
         .fetch_optional(&app.db)
         .await
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    Ok(Json(create_token(row.get("id"), &app.jwt_secret)))
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let stored = row.as_ref().map(|r| r.get::<String, _>("password_hash"));
+    let valid =
+        security::verify_password(&app.security, credentials.password.clone(), stored.clone())
+            .await?;
+    if !valid {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let row = row.ok_or(StatusCode::UNAUTHORIZED)?;
+    let id: Uuid = row.get("id");
+    if let Some(old) = stored.filter(|h| !h.starts_with("$argon2id$")) {
+        let upgraded = security::password_hash(&app.security, credentials.password).await?;
+        sqlx::query("UPDATE users SET password_hash=$1 WHERE id=$2 AND password_hash=$3")
+            .bind(upgraded)
+            .bind(id)
+            .bind(old)
+            .execute(&app.db)
+            .await
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    }
+    Ok(Json(create_token(id, &app.jwt_secret)))
 }
 
 fn create_token(id: Uuid, secret: &str) -> Token {
@@ -210,206 +256,53 @@ fn create_token(id: Uuid, secret: &str) -> Token {
     }
 }
 
+fn trading_status(error: exchange_trading::TradingError) -> StatusCode {
+    use exchange_trading::TradingError::*;
+    match error {
+        Invalid => StatusCode::BAD_REQUEST,
+        NotFound => StatusCode::NOT_FOUND,
+        InsufficientFunds => StatusCode::UNPROCESSABLE_ENTITY,
+        Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
 async fn place_order(
     State(app): State<AppState>,
     headers: HeaderMap,
     Json(order): Json<NewOrder>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
-    let user_id = authenticated_user(&headers, &app)?;
-    order.validate().map_err(|_| StatusCode::BAD_REQUEST)?;
-    let id = Uuid::new_v4();
-    let mut tx = app
+    let user = authenticated_user(&headers, &app)?;
+    let mut connection = app
         .db
-        .begin()
+        .acquire()
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    // Reusing a client order ID returns the existing order, without charging twice.
-    let found = sqlx::query("SELECT id,status FROM orders WHERE user_id=$1 AND client_order_id=$2")
-        .bind(user_id)
-        .bind(&order.client_order_id)
-        .fetch_optional(&mut *tx)
+    let (created, value) = exchange_trading::place_order(&mut connection, user, order)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(row) = found {
-        return Ok((
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "id": row.get::<Uuid, _>("id"),
-                "status": row.get::<String, _>("status"),
-                "idempotent": true
-            })),
-        ));
-    }
-    let state = sqlx::query("SELECT reference_price FROM market_state WHERE instrument=$1")
-        .bind(&order.instrument)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-    let reference: Decimal = state.get("reference_price");
-    // Market buys can pay up to 5% above the reference price. Market sells have no floor.
-    let price = if let Some(limit_price) = order.limit_price {
-        limit_price
-    } else if order.side == Side::Buy {
-        reference * Decimal::new(105, 2)
-    } else {
-        Decimal::ZERO
-    };
-    let reserve = if order.side == Side::Buy {
-        order.quantity * price
-    } else {
-        order.quantity
-    };
-    let base = order
-        .instrument
-        .split('-')
-        .next()
-        .ok_or(StatusCode::BAD_REQUEST)?;
-    let quote = order
-        .instrument
-        .split('-')
-        .nth(1)
-        .ok_or(StatusCode::BAD_REQUEST)?;
-    let currency = if order.side == Side::Buy { quote } else { base };
-    // Move funds into the reserved balance until the order fills or is cancelled.
-    let result = sqlx::query(
-        "UPDATE accounts
-         SET available=available-$1,reserved=reserved+$1
-         WHERE user_id=$2 AND currency=$3 AND available >= $1",
-    )
-    .bind(reserve)
-    .bind(user_id)
-    .bind(currency)
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if result.rows_affected() != 1 {
-        return Err(StatusCode::UNPROCESSABLE_ENTITY);
-    }
-    let side = match order.side {
-        Side::Buy => "buy",
-        Side::Sell => "sell",
-    };
-    let order_type = match order.order_type {
-        OrderType::Market => "market",
-        OrderType::Limit => "limit",
-    };
-    sqlx::query(
-        "INSERT INTO orders(
-            id,user_id,client_order_id,instrument,side,order_type,
-            quantity,remaining,limit_price,status
-         )
-         VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,'open')",
-    )
-    .bind(id)
-    .bind(user_id)
-    .bind(&order.client_order_id)
-    .bind(&order.instrument)
-    .bind(side)
-    .bind(order_type)
-    .bind(order.quantity)
-    .bind(price)
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| StatusCode::BAD_REQUEST)?;
-    sqlx::query(
-        "INSERT INTO outbox_events(kind,aggregate_id,payload) VALUES('order.accepted',$1,$2)",
-    )
-    .bind(id)
-    .bind(serde_json::json!({
-        "instrument": order.instrument
-    }))
-    .execute(&mut *tx)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    metrics::counter!(
-        "orders_accepted_total",
-        "instrument" => order.instrument.clone(),
-        "side" => side,
-        "order_type" => order_type
-    )
-    .increment(1);
-    metrics::histogram!(
-        "order_notional_usd",
-        "instrument" => order.instrument.clone(),
-        "side" => side,
-        "order_type" => order_type
-    )
-    .record((order.quantity * price).to_f64().unwrap_or_default());
+        .map_err(trading_status)?;
     Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({
-            "id": id,
-            "status": "open"
-        })),
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+        Json(value),
     ))
 }
-
 async fn cancel_order(
     State(app): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let user_id = authenticated_user(&headers, &app)?;
-    let mut tx = app
+    let user = authenticated_user(&headers, &app)?;
+    let mut connection = app
         .db
-        .begin()
+        .acquire()
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let order = sqlx::query(
-        "SELECT instrument,side,remaining,limit_price
-         FROM orders
-         WHERE id=$1 AND user_id=$2 AND status IN ('open','partially_filled')
-         FOR UPDATE",
-    )
-    .bind(id)
-    .bind(user_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
-    .ok_or(StatusCode::NOT_FOUND)?;
-    let symbol: String = order.get("instrument");
-    let side: String = order.get("side");
-    let remaining: Decimal = order.get("remaining");
-    let price: Decimal = order.get("limit_price");
-    let currency = if side == "buy" {
-        symbol.split('-').nth(1).unwrap()
-    } else {
-        symbol.split('-').next().unwrap()
-    };
-    let release = if side == "buy" {
-        remaining * price
-    } else {
-        remaining
-    };
-    sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
-        .bind(id)
-        .execute(&mut *tx)
+    exchange_trading::cancel_order(&mut connection, user, id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    sqlx::query("UPDATE accounts SET available=available+$1,reserved=reserved-$1 WHERE user_id=$2 AND currency=$3")
-        .bind(release)
-        .bind(user_id)
-        .bind(currency)
-        .execute(&mut *tx)
-        .await
-        .map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
-    tx.commit()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    metrics::counter!(
-        "orders_cancelled_total",
-        "instrument" => symbol,
-        "side" => side
-    )
-    .increment(1);
-    Ok(Json(serde_json::json!({
-        "id": id,
-        "status": "cancelled"
-    })))
+        .map(Json)
+        .map_err(trading_status)
 }
 
 async fn open_orders(
@@ -421,7 +314,7 @@ async fn open_orders(
         "SELECT id,instrument,side,quantity,remaining,limit_price,status,created_at
          FROM orders
          WHERE user_id=$1 AND status IN ('open','partially_filled')
-         ORDER BY created_at DESC",
+         ORDER BY created_at DESC LIMIT 100",
     )
     .bind(user_id)
     .fetch_all(&app.db)
@@ -476,7 +369,7 @@ async fn fills(
          FROM fills f
          JOIN orders o ON o.id IN (f.maker_order_id,f.taker_order_id)
          WHERE o.user_id=$1
-         ORDER BY f.created_at DESC",
+         ORDER BY f.created_at DESC LIMIT 100",
     )
     .bind(user_id)
     .fetch_all(&app.db)
@@ -543,11 +436,13 @@ async fn order_book(
     Path(symbol): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let rows = sqlx::query(
-        "SELECT side,limit_price,SUM(remaining) AS quantity
-         FROM orders
-         WHERE instrument=$1 AND status IN ('open','partially_filled')
-         GROUP BY side,limit_price
-         ORDER BY side,limit_price",
+        "(SELECT side,limit_price,SUM(remaining) AS quantity FROM orders
+         WHERE instrument=$1 AND side='buy' AND order_type='limit' AND status IN ('open','partially_filled')
+         GROUP BY side,limit_price ORDER BY limit_price DESC LIMIT 20)
+         UNION ALL
+         (SELECT side,limit_price,SUM(remaining) AS quantity FROM orders
+         WHERE instrument=$1 AND side='sell' AND order_type='limit' AND status IN ('open','partially_filled')
+         GROUP BY side,limit_price ORDER BY limit_price ASC LIMIT 20)",
     )
     .bind(&symbol)
     .fetch_all(&app.db)
@@ -572,4 +467,30 @@ async fn order_book(
         "bids": bids,
         "asks": asks
     })))
+}
+
+async fn frontend() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../../frontend/index.html"))
+}
+async fn frontend_css() -> impl IntoResponse {
+    (
+        [("content-type", "text/css")],
+        include_str!("../../frontend/style.css"),
+    )
+}
+async fn recent_trades(
+    State(app): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
+    let rows = sqlx::query("SELECT price,quantity,created_at FROM fills WHERE instrument=$1 ORDER BY created_at DESC LIMIT 60")
+        .bind(symbol).fetch_all(&app.db).await.map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(Json(rows.into_iter().map(|r| serde_json::json!({"price":r.get::<Decimal,_>("price"),
+        "quantity":r.get::<Decimal,_>("quantity"),"time":r.get::<chrono::DateTime<chrono::Utc>,_>("created_at")})).collect()))
+}
+async fn simulation(State(app): State<AppState>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let row = sqlx::query("SELECT count(*) AS total,count(*) FILTER(WHERE last_seen_at > now()-interval '15 seconds') AS active FROM simulated_traders")
+        .fetch_one(&app.db).await.map_err(|_|StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(Json(
+        serde_json::json!({"traders":row.get::<i64,_>("total"),"active":row.get::<i64,_>("active")}),
+    ))
 }

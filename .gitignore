@@ -16,3 +16,6 @@ terraform/backend.hcl
 
 
 provisioning/.cloudflare
+# Generated WebAssembly assets
+crates/frontend/dist/pkg/*.wasm
+crates/frontend/dist/pkg/exchange_frontend*

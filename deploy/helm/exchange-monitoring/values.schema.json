@@ -582,6 +582,34 @@
           }
         }
       }
+    },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "retention": {
+          "type": "string"
+        },
+        "persistence": {
+          "type": "object"
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled",
+        "image",
+        "retention",
+        "persistence",
+        "resources"
+      ],
+      "additionalProperties": false
     }
   },
   "allOf": [

@@ -15,6 +15,7 @@ on:
       - deploy/helm/**
       - deploy/ingress/**
       - scripts/check-helm.py
+      - scripts/verify-exchange.py
       - scripts/requirements-helm.txt
       - .github/workflows/application.yml
   push:
@@ -27,6 +28,7 @@ on:
       - deploy/helm/**
       - deploy/ingress/**
       - scripts/check-helm.py
+      - scripts/verify-exchange.py
       - scripts/requirements-helm.txt
       # The bot updates this file after publishing. Don't start another build.
       - '!deploy/helm/exchange-api/values-dev.yaml'
@@ -54,12 +56,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: azure/setup-helm@v5
         with:
           version: v3.17.3
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy -p exchange-frontend --target wasm32-unknown-unknown --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - name: Verify orders, account ownership, and public API protections
+        run: |
+          docker run -d --name exchange-verification-postgres -p 127.0.0.1:25432:5432 -e POSTGRES_PASSWORD=test-only-private-password -e POSTGRES_DB=dummy_exchange postgres:18.6-alpine
+          until docker exec exchange-verification-postgres pg_isready -U postgres; do sleep 1; done
+          cargo build --workspace --locked
+          PGHOST=127.0.0.1 PGPORT=25432 PGUSER=postgres PGDATABASE=dummy_exchange PGPASSWORD=test-only-private-password PGSSLMODE=disable target/debug/exchange-api migrate
+          python scripts/verify-exchange.py
+          docker rm -f exchange-verification-postgres
       - run: cargo build --workspace --release --locked
       - uses: actions/setup-python@v6
         with:
@@ -176,6 +188,7 @@ jobs:
           yq -i '.image.digest = strenv(API_DIGEST)' deploy/helm/exchange-api/values-dev.yaml
           yq -i '.image.digest = strenv(WORKER_DIGEST)' deploy/helm/exchange-worker/values-dev.yaml
           yq -i '.image.digest = strenv(SIMULATOR_DIGEST)' deploy/helm/exchange/values-dev.yaml
+          yq -i '.traders.enabled = true' deploy/helm/exchange/values-dev.yaml
       - name: Commit the desired development release
         run: |
           git config user.name 'dummy-exchange deployment bot'

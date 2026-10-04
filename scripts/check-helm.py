@@ -54,10 +54,10 @@ def main():
         return docs
 
     expected = {
-        'exchange-api': {'api', 'migration'}, 'exchange-worker': {'worker'}, 'exchange': {'simulator'},
+        'exchange-api': {'api', 'migration'}, 'exchange-worker': {'worker'}, 'exchange': {'simulator', 'trader'},
         'exchange-postgres': {'postgres', 'redis'},
         'exchange-monitoring': {'prometheus', 'grafana', 'postgres-exporter', 'redis-exporter',
-                                'kube-state-metrics', 'node-exporter', 'loki', 'alloy'},
+                                'kube-state-metrics', 'node-exporter', 'loki', 'alloy', 'tempo'},
     }
     actual = {p.name for p in CHARTS.iterdir() if (p / 'Chart.yaml').exists()}
     assert actual == set(expected) | {'exchange-tunnel'}, actual
@@ -92,7 +92,11 @@ def main():
                     assert len(doc['spec']['data']) == 1, 'Each owner synchronizes only its credential'
                     assert doc['metadata']['annotations']['argocd.argoproj.io/sync-wave'] == '-3'
                 assert doc['kind'] != 'Ingress', 'Public traffic uses direct tunnel routes'
-            assert components == expected[chart], (chart, components)
+            trader_enabled = True
+            if chart == "exchange" and profile:
+                trader_enabled = yaml.safe_load((CHARTS/chart/f"values-{profile}.yaml").read_text()).get("traders",{}).get("enabled",True)
+            expected_components = expected[chart] - ({"trader"} if chart == "exchange" and not trader_enabled else set())
+            assert components == expected_components, (chart, components)
         for component in ('simulator', 'prometheus'):
             assert workloads[component]['spec']['strategy']['type'] == 'Recreate'
         assert workloads['simulator']['spec']['replicas'] == 1

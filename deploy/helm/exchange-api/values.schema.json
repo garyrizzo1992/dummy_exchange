@@ -274,6 +274,35 @@
           }
         ]
       }
+    },
+    "tracing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "collectorImage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled",
+        "collectorImage",
+        "endpoint",
+        "resources"
+      ]
+    },
+    "trustCloudflare": {
+      "type": "boolean"
     }
   },
   "allOf": [

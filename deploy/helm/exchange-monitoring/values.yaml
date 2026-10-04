@@ -97,3 +97,14 @@ externalSecrets:
   region: eu-milan-1
   vaultId: ''
   secretName: ''
+
+tracing:
+  enabled: true
+  image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
+  retention: 72h
+  persistence:
+    size: 5Gi
+    storageClass: ''
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: '1', memory: 768Mi}

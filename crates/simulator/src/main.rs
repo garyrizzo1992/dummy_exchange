@@ -1,5 +1,6 @@
-//! Moves the demo market prices and adds buy and sell orders once a second.
-//! It only replaces simulator orders, never user orders.
+mod trader;
+// Moves the demo market prices and adds buy and sell orders once a second.
+// It only replaces simulator orders, never user orders.
 
 use axum::{Router, extract::State, routing::get};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -15,7 +16,12 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt().json().init();
+    let _telemetry =
+        exchange_config::telemetry::init(if env::args().nth(1).as_deref() == Some("trader") {
+            "exchange-trader"
+        } else {
+            "exchange-market-simulator"
+        })?;
     let metrics = PrometheusBuilder::new().install_recorder()?;
     let metrics_bind = env::var("SIMULATOR_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:3002".into());
     tokio::spawn(async move {
@@ -23,6 +29,9 @@ async fn main() -> anyhow::Result<()> {
             warn!(%error, "simulator metrics server stopped");
         }
     });
+    if env::args().nth(1).as_deref() == Some("trader") {
+        return trader::run().await;
+    }
     // `?` returns an error from this function if loading the URL or connecting fails.
     let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     let seed_text = env::var("SIMULATION_SEED").unwrap_or_else(|_| "42".to_string());

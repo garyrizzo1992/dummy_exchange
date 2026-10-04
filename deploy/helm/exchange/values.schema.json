@@ -166,6 +166,54 @@
           }
         ]
       }
+    },
+    "tracing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "collectorImage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled",
+        "collectorImage",
+        "endpoint",
+        "resources"
+      ]
+    },
+    "traders": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "intervalMs": {
+          "type": "integer",
+          "minimum": 100
+        }
+      },
+      "required": [
+        "enabled",
+        "replicas",
+        "intervalMs"
+      ]
     }
   },
   "additionalProperties": false

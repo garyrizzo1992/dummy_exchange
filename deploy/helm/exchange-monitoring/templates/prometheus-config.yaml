@@ -98,6 +98,16 @@ data:
           - names: ["{{ $name }}-worker"]
             type: A
             port: 3001
+      {{- if .Values.tracing.enabled }}
+      - job_name: tempo
+        static_configs:
+          - targets: ["{{ $name }}-tempo:3200"]
+      {{- end }}
+      - job_name: autonomous-trader
+        dns_sd_configs:
+          - names: ["{{ $name }}-trader"]
+            type: A
+            port: 3003
       - job_name: market-simulator
         metrics_path: /metrics
         static_configs:

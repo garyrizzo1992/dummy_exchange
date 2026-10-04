@@ -62,19 +62,34 @@ pub struct Match {
 pub enum OrderError {
     #[error("quantity must be positive")]
     Quantity,
+    #[error("invalid client order ID or instrument")]
+    Identifier,
     #[error("limit order requires positive limit_price")]
     LimitPrice,
 }
 
 impl NewOrder {
     pub fn validate(&self) -> Result<(), OrderError> {
-        if self.quantity <= Decimal::ZERO {
+        if self.client_order_id.is_empty()
+            || self.client_order_id.len() > 128
+            || self.instrument.len() > 32
+            || !self.instrument.contains('-')
+        {
+            return Err(OrderError::Identifier);
+        }
+        if self.quantity <= Decimal::ZERO
+            || self.quantity > Decimal::from(1_000_000)
+            || self.quantity.scale() > 10
+        {
             return Err(OrderError::Quantity);
         }
-        if self.order_type == OrderType::Limit
-            && self.limit_price.unwrap_or(Decimal::ZERO) <= Decimal::ZERO
-        {
-            return Err(OrderError::LimitPrice);
+        match (self.order_type, self.limit_price) {
+            (OrderType::Market, None) => {}
+            (OrderType::Limit, Some(price))
+                if price > Decimal::ZERO
+                    && price <= Decimal::from(1_000_000_000_000_i64)
+                    && price.scale() <= 10 => {}
+            _ => return Err(OrderError::LimitPrice),
         }
         Ok(())
     }
@@ -106,6 +121,9 @@ pub fn match_taker(taker: &mut BookOrder, makers: &mut [BookOrder]) -> Vec<Match
     makers.sort_by(price_time);
     let mut fills = Vec::new();
     for maker in makers {
+        if maker.remaining <= Decimal::ZERO {
+            continue;
+        }
         if taker.remaining <= Decimal::ZERO || !crosses(taker, maker) {
             break;
         }
@@ -214,5 +232,117 @@ mod tests {
         assert!(fills.is_empty());
         assert_eq!(taker.remaining, dec!(2));
         assert_eq!(makers[0].remaining, dec!(2));
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    fn order() -> NewOrder {
+        NewOrder {
+            client_order_id: "test".into(),
+            instrument: "BTC-USD".into(),
+            side: Side::Buy,
+            order_type: OrderType::Market,
+            quantity: Decimal::ONE,
+            limit_price: None,
+        }
+    }
+    #[test]
+    fn market_price_cannot_credit_balance() {
+        for price in [-1, 0, 1] {
+            let mut order = order();
+            order.limit_price = Some(Decimal::from(price));
+            assert!(order.validate().is_err());
+        }
+        assert!(order().validate().is_ok());
+    }
+    #[test]
+    fn excessive_precision_and_size_are_rejected() {
+        let mut order = order();
+        order.quantity = Decimal::MAX;
+        assert!(order.validate().is_err());
+        order.quantity = Decimal::new(1, 11);
+        assert!(order.validate().is_err());
+        order.quantity = Decimal::ONE;
+        order.client_order_id = "x".repeat(129);
+        assert!(order.validate().is_err());
+    }
+    #[test]
+    fn exhausted_makers_never_emit_zero_fills() {
+        let mut taker = BookOrder {
+            id: Uuid::new_v4(),
+            side: Side::Buy,
+            price: Decimal::ONE,
+            remaining: Decimal::ONE,
+            sequence: 2,
+        };
+        let mut makers = [BookOrder {
+            id: Uuid::new_v4(),
+            side: Side::Sell,
+            price: Decimal::ONE,
+            remaining: Decimal::ZERO,
+            sequence: 1,
+        }];
+        assert!(match_taker(&mut taker, &mut makers).is_empty());
+    }
+}
+
+/// Market sell sentinel prices are never execution prices. Use the resting limit
+/// counterparty, or the reference when both sides are market orders.
+pub fn execution_price(
+    buy: &BookOrder,
+    sell: &BookOrder,
+    buy_type: OrderType,
+    sell_type: OrderType,
+    reference: Decimal,
+) -> Decimal {
+    match (buy_type, sell_type) {
+        (OrderType::Market, OrderType::Market) => reference.min(buy.price),
+        (_, OrderType::Market) => buy.price,
+        (OrderType::Market, _) => sell.price,
+        _ if buy.sequence < sell.sequence => buy.price,
+        _ => sell.price,
+    }
+}
+#[cfg(test)]
+mod execution_tests {
+    use super::*;
+    #[test]
+    fn market_sells_receive_the_resting_bid_not_zero() {
+        let buy = BookOrder {
+            id: Uuid::new_v4(),
+            side: Side::Buy,
+            price: Decimal::from(65_000),
+            remaining: Decimal::ONE,
+            sequence: 1,
+        };
+        let sell = BookOrder {
+            id: Uuid::new_v4(),
+            side: Side::Sell,
+            price: Decimal::ZERO,
+            remaining: Decimal::ONE,
+            sequence: 2,
+        };
+        assert_eq!(
+            execution_price(
+                &buy,
+                &sell,
+                OrderType::Limit,
+                OrderType::Market,
+                Decimal::from(64_000)
+            ),
+            buy.price
+        );
+        assert_eq!(
+            execution_price(
+                &buy,
+                &sell,
+                OrderType::Market,
+                OrderType::Market,
+                Decimal::from(64_000)
+            ),
+            Decimal::from(64_000)
+        );
     }
 }

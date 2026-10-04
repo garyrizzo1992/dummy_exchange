@@ -1,0 +1,119 @@
+{{- if and .Values.enabled .Values.tracing.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-tempo
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+    ingester:
+      max_block_duration: 5m
+    compactor:
+      compaction:
+        block_retention: {{ .Values.tracing.retention }}
+    storage:
+      trace:
+        backend: local
+        wal:
+          path: /var/tempo/wal
+        local:
+          path: /var/tempo/blocks
+    usage_report:
+      reporting_enabled: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-tempo
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  ports:
+    - {name: http, port: 3200, targetPort: http}
+    - {name: otlp, port: 4317, targetPort: otlp}
+  selector:
+    {{- include "exchange-monitoring.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: tempo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-tempo
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tempo
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: tempo
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ toYaml .Values.tracing | sha256sum }}
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: tempo
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: tempo
+          image: {{ .Values.tracing.image }}
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - {name: http, containerPort: 3200}
+            - {name: otlp, containerPort: 4317}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.tracing.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/tempo, readOnly: true}
+            - {name: data, mountPath: /var/tempo}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-tempo}
+        - name: data
+          persistentVolumeClaim: {claimName: {{ $name }}-tempo}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-tempo
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.tracing.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.tracing.persistence.size }}
+{{- end }}

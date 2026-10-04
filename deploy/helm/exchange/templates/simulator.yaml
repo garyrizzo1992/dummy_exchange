@@ -37,6 +37,11 @@ spec:
     spec:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
+      {{- if .Values.tracing.enabled }}
+      volumes:
+        - name: otel-config
+          configMap: {name: {{ $name }}-exchange-otel}
+      {{- end }}
       containers:
         - name: simulator
           image: {{ include "exchange.applicationImage" (dict "root" . "image" .Values.image) }}
@@ -51,6 +56,10 @@ spec:
             - name: metrics
               containerPort: 3002
           env:
+            {{- if .Values.tracing.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://127.0.0.1:4318
+            {{- end }}
             - name: RUST_LOG
               value: info
             - name: SIMULATOR_METRICS_BIND
@@ -66,3 +75,21 @@ spec:
             initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+
+        {{- if .Values.tracing.enabled }}
+        - name: otel-collector
+          image: {{ .Values.tracing.collectorImage }}
+          args: ["--config=/etc/otel/config.yaml"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            {{- toYaml .Values.tracing.resources | nindent 12 }}
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otel
+              readOnly: true
+        {{- end }}

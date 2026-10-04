@@ -1,54 +1,53 @@
-{{- $name := include "exchange-worker.fullname" . -}}
+{{- if .Values.traders.enabled }}
+{{- $name := include "exchange.fullname" . -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $name }}-worker
+  name: {{ $name }}-trader
   labels:
-    {{- include "exchange-worker.labels" . | nindent 4 }}
+    {{- include "exchange.labels" . | nindent 4 }}
 spec:
   clusterIP: None
   ports:
     - name: metrics
-      port: 3001
+      port: 3003
       targetPort: metrics
   selector:
-    {{- include "exchange-worker.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    {{- include "exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: trader
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: {{ $name }}-worker
+  name: {{ $name }}-trader
   labels:
-    {{- include "exchange-worker.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    {{- include "exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trader
 spec:
-  replicas: {{ .Values.replicas }}
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+  replicas: {{ .Values.traders.replicas }}
+  serviceName: {{ $name }}-trader
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
-      {{- include "exchange-worker.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: worker
+      {{- include "exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: trader
   template:
     metadata:
       labels:
-        {{- include "exchange-worker.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: worker
+        {{- include "exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: trader
     spec:
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       {{- if .Values.tracing.enabled }}
       volumes:
         - name: otel-config
-          configMap: {name: {{ $name }}-exchange-worker-otel}
+          configMap: {name: {{ $name }}-exchange-otel}
       {{- end }}
       containers:
-        - name: worker
-          image: {{ include "exchange-worker.applicationImage" (dict "root" . "image" .Values.image) }}
+        - name: trader
+          image: {{ include "exchange.applicationImage" (dict "root" . "image" .Values.image) }}
+          args: ["trader"]
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -58,7 +57,7 @@ spec:
             capabilities: { drop: ["ALL"] }
           ports:
             - name: metrics
-              containerPort: 3001
+              containerPort: 3003
           env:
             {{- if .Values.tracing.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -66,9 +65,16 @@ spec:
             {{- end }}
             - name: RUST_LOG
               value: info
-            - name: WORKER_METRICS_BIND
-              value: 0.0.0.0:3001
-            {{- include "exchange-worker.databaseEnv" . | nindent 12 }}
+            - name: SIMULATOR_METRICS_BIND
+              value: 0.0.0.0:3003
+            - name: TRADER_ID
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+            - name: TRADER_INTERVAL_MS
+              value: {{ .Values.traders.intervalMs | quote }}
+            - name: SIMULATION_SEED
+              value: {{ .Values.simulationSeed | quote }}
+            {{- include "exchange.databaseEnv" . | nindent 12 }}
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }
             initialDelaySeconds: 10
@@ -95,3 +101,5 @@ spec:
               mountPath: /etc/otel
               readOnly: true
         {{- end }}
+
+{{- end }}

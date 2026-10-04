@@ -1,0 +1,99 @@
+{
+  "uid": "exchange-tracing",
+  "title": "Exchange Tracing",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "tags": [
+    "exchange",
+    "traces"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Find order traces",
+      "type": "table",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ resource.service.name =~ \"exchange-.*\" }",
+          "limit": 50
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Active simulated traders",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(simulation_trader_active)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Orders placed by traders / second",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 8,
+        "y": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (instrument) (rate(simulation_orders_placed_total[5m]))",
+          "legendFormat": "{{instrument}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Inspect a trace",
+      "type": "text",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Open **Explore ? Tempo** to search traces and inspect the waterfall. `order.settle` continues the context stored when the order was accepted. Loki log entries with TraceID link directly to the trace. No passwords, tokens, or request bodies are recorded."
+      }
+    }
+  ]
+}

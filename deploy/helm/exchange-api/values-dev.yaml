@@ -7,3 +7,8 @@ externalSecrets:
   enabled: true
   vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq
   secretName: dummy-exchange-dev-jwt-secret
+
+tracing:
+  enabled: true
+
+trustCloudflare: true

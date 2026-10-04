@@ -48,3 +48,13 @@ externalSecrets:
 
 # Temporary environment overrides for migrations using older images.
 extraEnv: []
+
+tracing:
+  enabled: false
+  collectorImage: otel/opentelemetry-collector:0.147.0@sha256:b66294ff3a9eadc446ec4d0e78b6f4980c2a85b0ccc27f2cdc4641bd0fe401a7
+  endpoint: dummy-exchange-dev-dummy-exchange-tempo:4317
+  resources:
+    requests: {cpu: 25m, memory: 48Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+
+trustCloudflare: false

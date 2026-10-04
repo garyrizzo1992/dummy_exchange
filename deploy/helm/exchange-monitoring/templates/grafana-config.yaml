@@ -26,6 +26,32 @@ data:
         editable: false
         jsonData:
           maxLines: 1000
+          {{- if .Values.tracing.enabled }}
+          derivedFields:
+            - name: TraceID
+              matcherRegex: '"trace_id"\s*:\s*"([0-9a-f]{32})"'
+              datasourceUid: tempo
+              url: '$${__value.raw}'
+              urlDisplayLabel: View trace
+          {{- end }}
+      {{- end }}
+      {{- if .Values.tracing.enabled }}
+      - name: Tempo
+        uid: tempo
+        type: tempo
+        access: proxy
+        url: http://{{ $name }}-tempo:3200
+        editable: false
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: '-1m'
+            spanEndTimeShift: '1m'
+            filterByTraceID: false
+            customQuery: true
+            query: '{namespace="dummy-exchange"} |= "$${__trace.traceId}"'
+          tracesToMetrics:
+            datasourceUid: prometheus
       {{- end }}
   dashboards.yaml: |
     apiVersion: 1
@@ -46,6 +72,10 @@ metadata:
   labels:
     {{- include "exchange-monitoring.labels" . | nindent 4 }}
 data:
+  {{- if .Values.tracing.enabled }}
+  exchange-tracing.json: |
+    {{- .Files.Get "files/exchange-tracing.json" | nindent 4 }}
+  {{- end }}
   exchange-overview.json: |
     {{- .Files.Get "files/exchange-overview.json" | nindent 4 }}
   {{- if .Values.kubernetes.enabled }}

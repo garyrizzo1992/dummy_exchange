@@ -1,20 +1,25 @@
 //! Matches buy and sell orders, then updates balances in the same transaction.
 
 use axum::{Router, extract::State, routing::get};
-use exchange_domain::{BookOrder, Side, match_taker};
+use exchange_domain::{BookOrder, OrderType, Side, execution_price, match_taker, price_time};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::{PgPool, Row};
 use std::env;
 use tokio::time::{Duration, sleep};
-use tracing::{info, warn};
+use tracing::{Instrument, info, warn};
 use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt().json().init();
+    let _telemetry =
+        exchange_config::telemetry::init(if env::args().nth(1).as_deref() == Some("trader") {
+            "exchange-trader"
+        } else {
+            "exchange-matcher"
+        })?;
     let metrics = PrometheusBuilder::new().install_recorder()?;
     let metrics_bind = env::var("WORKER_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:3001".into());
     tokio::spawn(async move {
@@ -61,7 +66,7 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
         return Ok(());
     }
     let rows = sqlx::query(
-        "SELECT id,side,limit_price,remaining,sequence
+        "SELECT id,side,limit_price,remaining,sequence,trace_context,order_type
          FROM orders
          WHERE instrument=$1 AND status IN ('open','partially_filled') AND limit_price IS NOT NULL
          ORDER BY sequence
@@ -70,9 +75,22 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
     .bind(instrument)
     .fetch_all(&mut *tx)
     .await?;
+    let reference: Decimal =
+        sqlx::query_scalar("SELECT reference_price FROM market_state WHERE instrument=$1")
+            .bind(instrument)
+            .fetch_one(&mut *tx)
+            .await?;
+    let mut originals = std::collections::HashMap::new();
+    let mut contexts = std::collections::HashMap::new();
     let mut buys = Vec::new();
     let mut sells = Vec::new();
     for row in rows {
+        let context: serde_json::Value = row.get("trace_context");
+        contexts.insert(
+            row.get::<Uuid, _>("id"),
+            serde_json::from_value::<std::collections::HashMap<String, String>>(context)
+                .unwrap_or_default(),
+        );
         let order = BookOrder {
             id: row.get("id"),
             side: if row.get::<String, _>("side") == "buy" {
@@ -84,6 +102,12 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
             remaining: row.get("remaining"),
             sequence: row.get("sequence"),
         };
+        let kind = if row.get::<String, _>("order_type") == "market" {
+            OrderType::Market
+        } else {
+            OrderType::Limit
+        };
+        originals.insert(order.id, (order.clone(), kind));
         if order.side == Side::Buy {
             buys.push(order)
         } else {
@@ -94,8 +118,22 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
     let mut user_buy_fills = 0_u64;
     let mut user_sell_fills = 0_u64;
     let mut fill_notionals = Vec::new();
+    buys.sort_by(price_time);
     for mut buy in buys {
-        for fill in match_taker(&mut buy, &mut sells) {
+        for mut fill in match_taker(&mut buy, &mut sells) {
+            let (original_buy, buy_type) = &originals[&fill.taker_id];
+            let (original_sell, sell_type) = &originals[&fill.maker_id];
+            fill.price = execution_price(
+                original_buy,
+                original_sell,
+                *buy_type,
+                *sell_type,
+                reference,
+            );
+            anyhow::ensure!(
+                fill.price > Decimal::ZERO,
+                "execution price must be positive"
+            );
             let inserted = sqlx::query(
                 "INSERT INTO fills(maker_order_id,taker_order_id,instrument,price,quantity)
                  VALUES($1,$2,$3,$4,$5)
@@ -110,6 +148,18 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
             .fetch_optional(&mut *tx)
             .await?;
             if inserted.is_some() {
+                let span = tracing::info_span!("order.settle", instrument=%instrument,
+                    buy_order_id=%fill.taker_id, sell_order_id=%fill.maker_id, trace_id=tracing::field::Empty);
+                let parent = contexts
+                    .get(&fill.taker_id)
+                    .filter(|c| c.contains_key("traceparent"))
+                    .or_else(|| contexts.get(&fill.maker_id));
+                if let Some(context) = parent {
+                    exchange_config::telemetry::set_parent(&span, context);
+                }
+                if let Some(context) = contexts.get(&fill.maker_id) {
+                    exchange_config::telemetry::add_link(&span, context);
+                }
                 let (buy_is_system, sell_is_system) = apply_fill(
                     &mut tx,
                     fill.maker_id,
@@ -117,6 +167,7 @@ async fn tick_instrument(db: &PgPool, worker_id: &str, instrument: &str) -> anyh
                     fill.price,
                     fill.quantity,
                 )
+                .instrument(span)
                 .await?;
                 fills += 1;
                 if !buy_is_system {
@@ -238,5 +289,6 @@ async fn apply_fill(
             .execute(&mut **tx)
             .await?;
     }
+    info!(%buy_id, %sell_id, %price, %quantity, "order settlement applied");
     Ok((buy_is_system, sell_is_system))
 }
