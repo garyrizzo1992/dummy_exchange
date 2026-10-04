@@ -2,7 +2,6 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:a97516dacf770da249a63b1937e74541a93329480b8e374c9f8ef751295afa05
-
+  digest: sha256:158b66acc548e7723fb1eb5de8c228dd01f004b0e9e02dfc920b1c03dbb99c74
 tracing:
   enabled: true
