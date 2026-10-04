@@ -51,7 +51,7 @@ traders:
 
 kafka:
   enabled: false
-  bootstrapServers: exchange-kafka-kafka-bootstrap:9092
+  bootstrapServers: exchange-kafka-kafka-bootstrap.dummy-exchange.svc.cluster.local:9092
   topic: exchange.order-commands
 
 priceSource: simulated

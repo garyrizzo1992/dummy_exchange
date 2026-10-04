@@ -79,7 +79,7 @@ spec:
   triggers:
     - type: prometheus
       metadata:
-        serverAddress: http://{{ $name }}-prometheus:9090
+        serverAddress: http://{{ $name }}-prometheus.{{ .Release.Namespace }}.svc.cluster.local:9090
         query: max(simulation_target_traders{job="trader-load"})
         threshold: "1"
         ignoreNullValues: "false"

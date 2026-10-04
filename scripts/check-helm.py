@@ -182,6 +182,8 @@ def main():
         scaled=next(d for d in docs if d['kind']=='ScaledObject')
         assert scaled['spec']['scaleTargetRef']['name']==workload['metadata']['name']
         assert scaled['spec']['minReplicaCount']>=1
+        metadata=scaled['spec']['triggers'][0]['metadata']
+        assert '.dummy-exchange.svc.cluster.local' in metadata.get('bootstrapServers',metadata.get('serverAddress','')), 'KEDA uses cross-namespace service DNS'
     kafka=render('exchange-kafka')
     pool=next(d for d in kafka if d['kind']=='KafkaNodePool')
     topic=next(d for d in kafka if d['kind']=='KafkaTopic')
