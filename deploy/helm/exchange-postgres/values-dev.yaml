@@ -1,4 +1,8 @@
 # OCI development settings. Image digests are promoted by GitHub Actions.
+maxConnections: 200
+resources:
+  requests: {cpu: 100m, memory: 512Mi}
+  limits: {cpu: '1', memory: 1Gi}
 externalSecrets:
   enabled: true
   vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq

@@ -7,6 +7,7 @@ struct Snapshot {
     ticker: Value,
     book: Value,
     trades: Vec<Value>,
+    trade_feed: Vec<Value>,
     balances: Vec<Value>,
     orders: Vec<Value>,
     fills: Vec<Value>,
@@ -95,6 +96,7 @@ pub fn App() -> impl IntoView {
             let mut next = snapshot.get_untracked();
             let result: Result<(), String> = async {
                 next.instruments = array(api("/v1/instruments", "", None).await?);
+                next.trade_feed = array(api("/v1/trades", "", None).await?);
                 next.ticker = api(&format!("/v1/markets/{selected}/ticker"), "", None).await?;
                 next.book = api(&format!("/v1/markets/{selected}/book"), "", None).await?;
                 next.trades =
@@ -299,6 +301,14 @@ pub fn App() -> impl IntoView {
                 {move ||snapshot.get().trades.into_iter().take(14).map(|v|view!{<tr><td class="buy">{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td><td>{text(&v["time"]).get(11..19).unwrap_or("").to_owned()}</td></tr>}).collect_view()}
             </tbody></table></section>
             <section class="panel"><h2>"Markets"</h2><table><thead><tr><th>"Pair"</th><th>"Reference price"</th></tr></thead><tbody>{move ||snapshot.get().instruments.into_iter().map(|v|view!{<tr><td>{text(&v["symbol"])}</td><td>{money(&v["reference_price"])}</td></tr>}).collect_view()}</tbody></table><p class="muted">"Autonomous traders place real simulated orders and settle against their account balances."</p></section>
+            <section class="panel account"><h2>"Latest exchange trades"</h2>
+                <p class="muted">"Live executions across all markets · Refreshes every 2 seconds · Side shows the newer order"</p>
+                <Show when=move || !snapshot.get().trade_feed.is_empty() fallback=||view!{<p class="muted">"Waiting for the first trade…"</p>}>
+                    <div class="table-scroll"><table><thead><tr><th>"Time (UTC)"</th><th>"Market"</th><th>"Side"</th><th>"Price (USD)"</th><th>"Quantity"</th><th>"Value (USD)"</th></tr></thead><tbody>
+                        {move ||snapshot.get().trade_feed.into_iter().map(|v|view!{<tr class=if v["side"]=="buy"{"buy"}else{"sell"}><td>{text(&v["time"]).get(..19).unwrap_or("").replace('T'," ")}</td><td>{text(&v["instrument"])}</td><td>{if v["side"]=="buy"{"Buy"}else{"Sell"}}</td><td>{money(&v["price"])}</td><td>{format!("{:.8}",number(&v["quantity"]))}</td><td>{money(&v["value_usd"])}</td></tr>}).collect_view()}
+                    </tbody></table></div>
+                </Show>
+            </section>
             <section class="panel account leaderboard"><h2>"Trader profit leaderboard"</h2>
                 <p class="muted">"Ranked by profit percentage since tracking began. Profit includes trading results and changes in crypto value; reserved funds count as holdings."</p>
                 <div class="table-scroll"><table><thead><tr><th>"Rank"</th><th>"Account"</th><th>"Profit"</th><th>"Profit (USD)"</th><th>"No. of trades"</th></tr></thead><tbody>

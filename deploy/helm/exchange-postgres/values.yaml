@@ -11,6 +11,7 @@ database:
     name: dummy-exchange-secrets
     key: postgres-password
 enabled: true
+maxConnections: 100
 image: postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af
 persistence:
   size: 5Gi

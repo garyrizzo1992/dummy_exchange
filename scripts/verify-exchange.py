@@ -181,6 +181,12 @@ try:
    assert sql("SELECT count(*) FROM fills WHERE (maker_order_id='"+oid+"' OR taker_order_id='"+oid+"') AND price<=0")=='0'
    assert sql("SELECT count(*) FROM accounts WHERE user_id=(SELECT user_id FROM orders WHERE id='"+oid+"') AND reserved<>0")=='0', 'Completed orders must release every reserved decimal'
  assert sql("SELECT count(*) FROM accounts WHERE available<0 OR reserved<0")=='0'
+ status, feed, _ = req('/v1/trades')
+ assert status == 200 and 0 < len(feed) <= 60
+ assert all(set(trade) == {'id','instrument','side','price','quantity','value_usd','time'} for trade in feed)
+ assert len({trade['id'] for trade in feed}) == len(feed)
+ assert [trade['time'] for trade in feed] == sorted((trade['time'] for trade in feed), reverse=True)
+ assert all(Decimal(trade['price']) > 0 and Decimal(trade['quantity']) > 0 and Decimal(trade['value_usd']) == Decimal(trade['price'])*Decimal(trade['quantity']) and trade['side'] in ('buy','sell') for trade in feed)
  assert req('/v1/simulation')[1]['active']==1
  assert int(sql("SELECT count(*) FROM orders WHERE user_id='"+uid+"' AND trace_context ? 'traceparent'"))>0
  print('Passed: password migration, auth limits, body limits, negative-price exploit, idempotency/refunds, exclusive trader ownership, durable account restart, real fills and nonnegative balances.')

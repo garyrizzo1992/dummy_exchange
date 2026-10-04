@@ -10,7 +10,7 @@ wait for all in-sync replicas. ZooKeeper is not required.
 flowchart LR
   L[Random load controller] --> P[Private Prometheus]
   P --> KT[KEDA trader scaler]
-  KT --> T[Trader StatefulSet: 5–30]
+  KT --> T[Trader StatefulSet: 5–100]
   T --> K[Kafka: order commands]
   K --> W[Exchange workers: 1–6]
   K --> KW[KEDA lag scaler]
@@ -45,8 +45,13 @@ KEDA's HPA evaluates lag periodically, targeting 25 queued commands per worker, 
 up to twelve active consumers; the configured maximum is six. Two workers are
 the fallback after repeated scaler failures. Each worker has a maximum of four
 database connections to bound aggregate PostgreSQL demand.
+Development PostgreSQL allows 200 connections with a 1 GiB memory limit to
+accommodate up to 100 trader sessions plus workers, API and monitoring.
+Trader requests are 10m CPU/16 MiB and collector requests are 10m CPU/32 MiB;
+their existing 250m CPU/128 MiB limits allow bursts. These requests leave room
+for 100 traders on the existing two nodes. Recheck usage when load changes.
 
-The load controller chooses a random integer between 5 and 30 every 300 seconds
+The load controller chooses a random integer between 5 and 100 every 300 seconds
 and exposes `simulation_target_traders`. KEDA reads the private Prometheus
 service with threshold 1 and scales the trader StatefulSet toward that target.
 Missing metrics fall back to five traders. StatefulSet ordinals reuse accounts

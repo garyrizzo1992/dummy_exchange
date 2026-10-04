@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/accounts/balances", get(balances))
         .route("/v1/accounts/leaderboard", get(leaderboard))
         .route("/v1/fills", get(fills))
+        .route("/v1/trades", get(trade_feed))
         .route("/v1/ui", get(frontend))
         .route("/v1/ui/", get(frontend))
         .route("/v1/ui/style.css", get(frontend_css))
@@ -556,6 +557,23 @@ async fn frontend_css() -> impl IntoResponse {
         [("content-type", "text/css")],
         include_str!("../../frontend/style.css"),
     )
+}
+async fn trade_feed(State(app): State<AppState>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let trades = sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'id',f.id,'instrument',f.instrument,
+            'side',CASE WHEN b.sequence>s.sequence THEN b.side ELSE s.side END,
+            'price',f.price::text,'quantity',f.quantity::text,
+            'value_usd',(f.price*f.quantity)::text,'time',f.created_at
+        ) ORDER BY f.created_at DESC,f.id DESC),'[]'::jsonb)
+        FROM (SELECT * FROM fills ORDER BY created_at DESC,id DESC LIMIT 60) f
+        JOIN orders b ON b.id=f.taker_order_id
+        JOIN orders s ON s.id=f.maker_order_id",
+    )
+    .fetch_one(&app.db)
+    .await
+    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(Json(trades))
 }
 async fn recent_trades(
     State(app): State<AppState>,

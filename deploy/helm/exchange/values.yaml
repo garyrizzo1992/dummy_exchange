@@ -33,7 +33,7 @@ tracing:
   collectorImage: otel/opentelemetry-collector:0.147.0@sha256:b66294ff3a9eadc446ec4d0e78b6f4980c2a85b0ccc27f2cdc4641bd0fe401a7
   endpoint: dummy-exchange-dev-dummy-exchange-tempo:4317
   resources:
-    requests: {cpu: 25m, memory: 48Mi}
+    requests: {cpu: 10m, memory: 32Mi}
     limits: {cpu: 250m, memory: 128Mi}
 
 traders:
@@ -41,12 +41,12 @@ traders:
   replicas: 10
   intervalMs: 2000
   resources:
-    requests: {cpu: 25m, memory: 32Mi}
+    requests: {cpu: 10m, memory: 16Mi}
     limits: {cpu: 250m, memory: 128Mi}
   autoscaling:
     enabled: false
     minReplicas: 5
-    maxReplicas: 30
+    maxReplicas: 100
     intervalSeconds: 300
 
 kafka:
