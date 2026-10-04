@@ -43,6 +43,9 @@ spec:
         {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: prometheus
     spec:
+      {{- if .Values.kubernetes.enabled }}
+      serviceAccountName: {{ $name }}-prometheus
+      {{- end }}
       containers:
         - name: prometheus
           image: {{ .Values.prometheus.image }}

@@ -4,5 +4,14 @@ externalSecrets:
   vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq
   secretName: dummy-exchange-dev-grafana-admin-password
 prometheus:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: '1', memory: 1Gi}
+  persistence:
+    storageClass: local-path
+grafana:
+  persistence:
+    storageClass: local-path
+logging:
   persistence:
     storageClass: local-path

@@ -1,0 +1,250 @@
+{{- if and .Values.enabled .Values.logging.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-loki
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+data:
+  loki.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    common:
+      instance_addr: 127.0.0.1
+      path_prefix: /loki
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+    schema_config:
+      configs:
+        - from: '2024-04-01'
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /loki/index
+        cache_location: /loki/index-cache
+    compactor:
+      working_directory: /loki/compactor
+      retention_enabled: true
+      delete_request_store: filesystem
+    limits_config:
+      retention_period: {{ .Values.logging.retentionPeriod }}
+      ingestion_rate_mb: 2
+      ingestion_burst_size_mb: 4
+      max_query_parallelism: 4
+      split_queries_by_interval: 15m
+      max_query_lookback: {{ .Values.logging.retentionPeriod }}
+    querier:
+      max_concurrent: 2
+    query_range:
+      results_cache:
+        cache:
+          embedded_cache:
+            enabled: true
+            max_size_mb: 32
+    analytics:
+      reporting_enabled: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-loki
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.logging.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.logging.persistence.size }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-alloy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}-alloy
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}-alloy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-alloy
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}-alloy
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-alloy
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+data:
+  config.alloy: |
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+    discovery.relabel "pods" {
+      targets = discovery.kubernetes.pods.targets
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label = "namespace"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label = "pod"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label = "container"
+      }
+      rule {
+        source_labels = ["__meta_kubernetes_pod_node_name"]
+        target_label = "node"
+      }
+      rule {
+        target_label = "job"
+        replacement = "kubernetes-pods"
+      }
+    }
+    loki.source.kubernetes "pods" {
+      targets = discovery.relabel.pods.output
+      forward_to = [loki.write.local.receiver]
+    }
+    loki.source.kubernetes_events "events" {
+      job_name = "kubernetes-events"
+      log_format = "json"
+      forward_to = [loki.write.local.receiver]
+    }
+    loki.write "local" {
+      endpoint {
+        url = "http://{{ $name }}-loki:3100/loki/api/v1/push"
+      }
+    }
+{{- range $component := list "loki" "alloy" }}
+{{- $loki := eq $component "loki" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "exchange-monitoring.labels" $ | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: {{ if $loki }}3100{{ else }}12345{{ end }}
+      targetPort: http
+  selector:
+    {{- include "exchange-monitoring.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "exchange-monitoring.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ print (toYaml $.Values.logging) $.Chart.Version | sha256sum }}
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      {{- if not $loki }}
+      serviceAccountName: {{ $name }}-alloy
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      securityContext:
+        fsGroup: {{ if $loki }}10001{{ else }}473{{ end }}
+        runAsUser: {{ if $loki }}10001{{ else }}473{{ end }}
+        runAsNonRoot: true
+      containers:
+        - name: {{ $component }}
+          image: {{ if $loki }}{{ $.Values.logging.lokiImage }}{{ else }}{{ $.Values.logging.alloyImage }}{{ end }}
+          args:
+            {{- if $loki }}
+            - -config.file=/etc/config/loki.yaml
+            {{- else }}
+            - run
+            - /etc/config/config.alloy
+            - --storage.path=/var/lib/alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+            {{- end }}
+          resources:
+            {{- if $loki }}
+            {{- toYaml $.Values.logging.lokiResources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.logging.alloyResources | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ if $loki }}3100{{ else }}12345{{ end }}
+          readinessProbe:
+            httpGet: {path: {{ if $loki }}/ready{{ else }}/-/ready{{ end }}, port: http}
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet: {path: {{ if $loki }}/ready{{ else }}/-/ready{{ end }}, port: http}
+            timeoutSeconds: 5
+            failureThreshold: 30
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+            - name: data
+              mountPath: {{ if $loki }}/loki{{ else }}/var/lib/alloy{{ end }}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-{{ $component }}}
+        - name: data
+          {{- if $loki }}
+          persistentVolumeClaim: {claimName: {{ $name }}-loki}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}
+{{- end }}

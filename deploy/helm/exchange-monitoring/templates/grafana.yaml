@@ -28,6 +28,9 @@ metadata:
     app.kubernetes.io/component: grafana
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
+    rollingUpdate: null
   selector:
     matchLabels:
       {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
@@ -49,6 +52,10 @@ spec:
             - name: http
               containerPort: 3000
           env:
+            - name: GF_DATABASE_WAL
+              value: "true"
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
             - name: GF_SECURITY_ADMIN_USER
               value: admin
             - name: GF_SECURITY_ADMIN_PASSWORD
@@ -60,8 +67,15 @@ spec:
               value: "false"
           readinessProbe:
             httpGet: { path: /api/health, port: http }
-            initialDelaySeconds: 10
+            timeoutSeconds: 5
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            timeoutSeconds: 5
+            periodSeconds: 10
+            failureThreshold: 30
           volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
             - name: provisioning
               mountPath: /etc/grafana/provisioning/datasources/prometheus.yaml
               subPath: prometheus.yaml
@@ -71,12 +85,38 @@ spec:
               subPath: dashboards.yaml
               readOnly: true
             - name: dashboard
-              mountPath: /var/lib/grafana/dashboards/exchange-overview.json
-              subPath: exchange-overview.json
+              mountPath: /var/lib/grafana/dashboards
               readOnly: true
+      securityContext:
+        fsGroup: 472
       volumes:
+        - name: data
+          {{- if .Values.grafana.persistence.enabled }}
+          persistentVolumeClaim: { claimName: {{ $name }}-grafana }
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         - name: provisioning
           configMap: { name: {{ $name }}-grafana-provisioning }
         - name: dashboard
           configMap: { name: {{ $name }}-grafana-dashboard }
+{{- if .Values.grafana.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-grafana
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with .Values.grafana.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.grafana.persistence.size }}
+{{- end }}
 {{- end }}

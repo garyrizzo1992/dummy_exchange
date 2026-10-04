@@ -47,7 +47,7 @@ def main():
         run(args.helm, 'lint', str(location), *options)
         docs = validate(run(args.helm, 'template', release, str(location), '--namespace', 'dummy-exchange', *options))
         for doc in docs:
-            if doc['kind'] in ('Deployment', 'StatefulSet', 'Job'):
+            if doc['kind'] in ('Deployment', 'StatefulSet', 'DaemonSet', 'Job'):
                 for container in doc['spec']['template']['spec']['containers']:
                     resources = container.get('resources', {})
                     assert all(resources.get(k, {}).get(r) for k in ('requests', 'limits') for r in ('cpu', 'memory')), identity(doc)
@@ -56,7 +56,8 @@ def main():
     expected = {
         'exchange-api': {'api', 'migration'}, 'exchange-worker': {'worker'}, 'exchange': {'simulator'},
         'exchange-postgres': {'postgres', 'redis'},
-        'exchange-monitoring': {'prometheus', 'grafana', 'postgres-exporter', 'redis-exporter'},
+        'exchange-monitoring': {'prometheus', 'grafana', 'postgres-exporter', 'redis-exporter',
+                                'kube-state-metrics', 'node-exporter', 'loki', 'alloy'},
     }
     actual = {p.name for p in CHARTS.iterdir() if (p / 'Chart.yaml').exists()}
     assert actual == set(expected) | {'exchange-tunnel'}, actual
@@ -71,7 +72,7 @@ def main():
                 key = identity(doc)
                 assert key not in owned, f'Duplicate ownership: {key}'
                 owned[key] = chart
-                if doc['kind'] in ('Deployment', 'StatefulSet', 'Job'):
+                if doc['kind'] in ('Deployment', 'StatefulSet', 'DaemonSet', 'Job'):
                     component = doc['metadata']['labels']['app.kubernetes.io/component']
                     components.add(component)
                     workloads[component] = doc
@@ -136,12 +137,25 @@ def main():
     assert not render('exchange-postgres', overrides=('enabled=false', 'redis.enabled=false'))
     assert not render('exchange-monitoring', overrides=('enabled=false',))
     monitoring = render('exchange-monitoring', overrides=('postgresExporter.enabled=false', 'redisExporter.enabled=false'))
-    assert not any('exporter' in d['metadata']['name'] for d in monitoring)
+    assert not any(d['metadata']['name'].endswith(('-postgres-exporter', '-redis-exporter')) for d in monitoring)
     config = next(d for d in monitoring if d['kind'] == 'ConfigMap' and 'prometheus.yml' in d['data'])
     assert not any(j['job_name'] in ('postgres', 'redis') for j in yaml.safe_load(config['data']['prometheus.yml'])['scrape_configs'])
     assert not any(a['alert'] in ('PostgreSQLUnavailable', 'RedisUnavailable') for a in yaml.safe_load(config['data']['alerts.yml'])['groups'][0]['rules'])
     dashboard = next(d for d in monitoring if d['kind'] == 'ConfigMap' and 'exchange-overview.json' in d['data'])
     assert json.loads(dashboard['data']['exchange-overview.json'])['panels']
+    for filename in ('kubernetes-overview.json', 'kubernetes-logs.json'):
+        assert json.loads(dashboard['data'][filename])['panels']
+    grafana = next(d for d in monitoring if d['kind'] == 'Deployment' and d['metadata']['name'].endswith('-grafana'))
+    assert grafana['spec']['strategy']['type'] == 'Recreate', 'Single-writer Grafana SQLite storage'
+    assert grafana['spec']['template']['spec']['containers'][0]['startupProbe']
+    for d in monitoring:
+        if d['kind'] == 'ClusterRole':
+            assert not any('secrets' in r.get('resources', []) for r in d['rules']), identity(d)
+    minimal = render('exchange-monitoring', overrides=('kubernetes.enabled=false', 'logging.enabled=false', 'grafana.persistence.enabled=false'))
+    assert not any(d['kind'] == 'ClusterRole' for d in minimal)
+    assert not any(d['metadata']['name'].endswith(('-loki', '-alloy', '-kube-state-metrics', '-node-exporter')) for d in minimal)
+    minimal_config = next(d for d in minimal if d['kind'] == 'ConfigMap' and 'prometheus.yml' in d['data'])
+    assert not any(j['job_name'] in ('cadvisor', 'kubelet', 'loki', 'alloy', 'node-exporter', 'kube-state-metrics') for j in yaml.safe_load(minimal_config['data']['prometheus.yml'])['scrape_configs'])
     bridge = render('exchange-postgres', 'dev', overrides=('externalSecrets.legacyKeys.jwt-secret=old-jwt', 'externalSecrets.legacyKeys.grafana-admin-password=old-grafana'))
     assert len(next(d for d in bridge if d['kind'] == 'ExternalSecret')['spec']['data']) == 3
     for chart, setting in [('exchange-api', 'replicas=0'), ('exchange-worker', 'replicas=0'),

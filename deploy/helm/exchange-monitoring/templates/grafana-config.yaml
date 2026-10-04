@@ -11,11 +11,22 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: prometheus
         type: prometheus
         access: proxy
         url: http://{{ $name }}-prometheus:9090
         isDefault: true
         editable: false
+      {{- if .Values.logging.enabled }}
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://{{ $name }}-loki:3100
+        editable: false
+        jsonData:
+          maxLines: 1000
+      {{- end }}
   dashboards.yaml: |
     apiVersion: 1
     providers:
@@ -37,4 +48,12 @@ metadata:
 data:
   exchange-overview.json: |
     {{- .Files.Get "files/exchange-overview.json" | nindent 4 }}
+  {{- if .Values.kubernetes.enabled }}
+  kubernetes-overview.json: |
+    {{- .Files.Get "files/kubernetes-overview.json" | nindent 4 }}
+  {{- end }}
+  {{- if .Values.logging.enabled }}
+  kubernetes-logs.json: |
+    {{- .Files.Get "files/kubernetes-logs.json" | nindent 4 }}
+  {{- end }}
 {{- end }}

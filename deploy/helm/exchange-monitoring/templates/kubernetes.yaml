@@ -1,0 +1,163 @@
+{{- if and .Values.enabled .Values.kubernetes.enabled }}
+{{- $name := include "exchange-monitoring.fullname" . -}}
+{{- range $component := list "prometheus" "kube-state-metrics" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "exchange-monitoring.labels" $ | nindent 4 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}-prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/proxy, pods]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}-kube-state-metrics
+rules:
+  - apiGroups: [""]
+    resources: [nodes, pods, namespaces, persistentvolumeclaims, persistentvolumes]
+    verbs: [list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [list, watch]
+{{- range $component := list "prometheus" "kube-state-metrics" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}-{{ $component }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}-{{ $component }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}-{{ $component }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-kube-state-metrics
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    {{- include "exchange-monitoring.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kube-state-metrics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-kube-state-metrics
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kube-state-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: kube-state-metrics
+    spec:
+      serviceAccountName: {{ $name }}-kube-state-metrics
+      containers:
+        - name: kube-state-metrics
+          image: {{ .Values.kubernetes.kubeStateMetricsImage }}
+          args:
+            - --resources=nodes,pods,namespaces,deployments,statefulsets,daemonsets,replicasets,jobs,cronjobs,persistentvolumeclaims,persistentvolumes
+          resources:
+            {{- toYaml .Values.kubernetes.kubeStateMetricsResources | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: telemetry
+              containerPort: 8081
+          readinessProbe:
+            httpGet: {path: /readyz, port: telemetry}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities: {drop: [ALL]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}-node-exporter
+  labels:
+    {{- include "exchange-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: node-exporter
+spec:
+  selector:
+    matchLabels:
+      {{- include "exchange-monitoring.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: node-exporter
+  template:
+    metadata:
+      labels:
+        {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: node-exporter
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: {kubernetes.io/os: linux}
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: node-exporter
+          image: {{ .Values.kubernetes.nodeExporterImage }}
+          args:
+            - --path.rootfs=/host
+            - --web.listen-address=:9100
+            - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/(docker|kubelet|containers))($|/)
+          resources:
+            {{- toYaml .Values.kubernetes.nodeExporterResources | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 9100
+          readinessProbe:
+            httpGet: {path: /, port: metrics}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: root
+              mountPath: /host
+              readOnly: true
+              mountPropagation: HostToContainer
+      volumes:
+        - name: root
+          hostPath: {path: /, type: Directory}
+{{- end }}

@@ -17,6 +17,77 @@ data:
       - job_name: prometheus
         static_configs:
           - targets: ["localhost:9090"]
+      - job_name: grafana
+        static_configs:
+          - targets: ["{{ $name }}-grafana:3000"]
+      {{- if .Values.kubernetes.enabled }}
+      - job_name: apiserver
+        scheme: https
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        static_configs:
+          - targets: ["kubernetes.default.svc:443"]
+      - job_name: coredns
+        static_configs:
+          - targets: ["kube-dns.kube-system.svc:9153"]
+      - job_name: argocd
+        static_configs:
+          - targets: ["argocd-metrics.argocd.svc:8082"]
+      - job_name: argocd-server
+        static_configs:
+          - targets: ["argocd-server-metrics.argocd.svc:8083"]
+      - job_name: argocd-repo-server
+        static_configs:
+          - targets: ["argocd-repo-server.argocd.svc:8084"]
+      - job_name: kube-state-metrics
+        static_configs:
+          - targets: ["{{ $name }}-kube-state-metrics:8080"]
+      - job_name: node-exporter
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [{{ .Release.Namespace | quote }}]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+            regex: node-exporter
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+            regex: {{ .Release.Name | quote }}
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+      {{- range $job := list "kubelet" "cadvisor" }}
+      - job_name: {{ $job }}
+        scheme: https
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics{{ if eq $job "cadvisor" }}/cadvisor{{ end }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.logging.enabled }}
+      - job_name: loki
+        static_configs:
+          - targets: ["{{ $name }}-loki:3100"]
+      - job_name: alloy
+        static_configs:
+          - targets: ["{{ $name }}-alloy:12345"]
+      {{- end }}
       - job_name: exchange-api
         metrics_path: /metrics
         static_configs:
@@ -69,4 +140,37 @@ data:
             for: 5m
             labels: { severity: warning }
             annotations: { summary: More than 5 percent of API requests are failing with 5xx responses }
+      {{- if .Values.kubernetes.enabled }}
+      - name: kubernetes-health
+        rules:
+          - alert: KubernetesNodeNotReady
+            expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+            for: 5m
+            labels: {severity: critical}
+            annotations: {summary: Kubernetes node is not ready}
+          - alert: KubernetesPodNotReady
+            expr: kube_pod_status_ready{condition="true"} == 0 and on(namespace,pod) kube_pod_status_phase{phase="Running"} == 1
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: Running pod is not ready}
+          - alert: KubernetesContainerRestarting
+            expr: increase(kube_pod_container_status_restarts_total[15m]) > 2
+            for: 1m
+            labels: {severity: warning}
+            annotations: {summary: Container has restarted more than twice in fifteen minutes}
+          - alert: KubernetesContainerOOMKilled
+            expr: kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1 and on(namespace,pod,container) increase(kube_pod_container_status_restarts_total[15m]) > 0
+            labels: {severity: warning}
+            annotations: {summary: Container exceeded its memory limit}
+          - alert: NodeDiskAlmostFull
+            expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.15
+            for: 10m
+            labels: {severity: warning}
+            annotations: {summary: Node filesystem has less than fifteen percent free space}
+          - alert: GrafanaUnavailable
+            expr: up{job="grafana"} == 0
+            for: 2m
+            labels: {severity: warning}
+            annotations: {summary: Grafana is unavailable}
+      {{- end }}
 {{- end }}
