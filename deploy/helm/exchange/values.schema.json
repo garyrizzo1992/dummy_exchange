@@ -214,6 +214,13 @@
         "replicas",
         "intervalMs"
       ]
+    },
+    "priceSource": {
+      "type": "string",
+      "enum": [
+        "simulated",
+        "coinbase"
+      ]
     }
   },
   "additionalProperties": false

@@ -53,6 +53,9 @@ async fn api(path: &str, token: &str, body: Option<Value>) -> Result<Value, Stri
             401 => "Sign in again or check your email and password.",
             409 => "This email is already registered.",
             422 => "Insufficient available balance.",
+            503 => {
+                "Exchange temporarily unavailable. The price feed may be stale; try again shortly."
+            }
             429 => "Too many requests. Please wait a minute.",
             _ => "The exchange could not complete this request. Please try again.",
         }
@@ -209,7 +212,7 @@ pub fn App() -> impl IntoView {
             <section class="panel market"><div class="market-head"><h2>"Spot market"</h2><select prop:value=move ||market.get() on:change=move |ev| {market.set(event_target_value(&ev));price.set(String::new());connected.set(false);snapshot.update(|s|{s.trades.clear();s.book=Value::Null;s.ticker=Value::Null;});}>
                 <option value="BTC-USD">"BTC / USD"</option><option value="ETH-USD">"ETH / USD"</option><option value="SOL-USD">"SOL / USD"</option></select></div>
                 <div class="price">{move ||if snapshot.get().ticker.is_null() {"Loading price...".to_owned()}else{format!("${}",money(&snapshot.get().ticker["price"]))}}</div>
-                <div class="status">{move || if connected.get() {"Live | Refreshing every 2 seconds"} else {"Reconnecting to exchange..."}}</div>
+                <div class="status">{move || if connected.get() {if snapshot.get().ticker["fresh"]==false {"Price feed stale | Order placement paused"}else if snapshot.get().ticker["source"]=="coinbase" {"Coinbase live reference | Updating about every 5 seconds"}else{"Simulated reference | Refreshing every 2 seconds"}} else {"Reconnecting to exchange..."}}</div>
                 <svg class="chart" viewBox="0 0 700 230" preserveAspectRatio="none" role="img" aria-label="Recent trade price chart">
                     <line x1="0" y1="50" x2="700" y2="50"/><line x1="0" y1="115" x2="700" y2="115"/><line x1="0" y1="180" x2="700" y2="180"/>
                     <polyline points=move || {let mut prices:Vec<f64>=snapshot.get().trades.iter().map(|t|number(&t["price"])).collect();prices.reverse();
@@ -222,7 +225,7 @@ pub fn App() -> impl IntoView {
                 <label>"Order type"<select on:change=move |ev|kind.set(event_target_value(&ev))><option value="limit">"Limit"</option><option value="market">"Market"</option></select></label>
                 <label>"Quantity"<input type="number" min="0.0000000001" step="any" prop:value=move ||quantity.get() on:input=move |ev|quantity.set(event_target_value(&ev))/></label>
                 <Show when=move ||kind.get()=="limit"><label>"Limit price (USD)"<input type="number" min="0.01" step="0.01" placeholder="Price" prop:value=move ||price.get() on:input=move |ev|price.set(event_target_value(&ev))/></label><button disabled=move ||snapshot.get().ticker.is_null() on:click=move |_|price.set(money(&snapshot.get().ticker["price"]))>"Use market price"</button></Show>
-                <button class="primary" disabled=move ||token.get().is_empty()||busy.get() on:click=submit>{move ||if busy.get(){"Processing..."}else if token.get().is_empty(){"Sign in to trade"}else{"Submit order"}}</button>
+                <button class="primary" disabled=move ||token.get().is_empty()||busy.get()||snapshot.get().ticker["fresh"]==false on:click=submit>{move ||if busy.get(){"Processing..."}else if token.get().is_empty(){"Sign in to trade"}else{"Submit order"}}</button>
                 <p class="error" role="alert">{move ||error.get()}</p><p class="success" role="status">{move ||message.get()}</p>
             </section>
             <section class="panel"><h2>"Order book"</h2><table><thead><tr><th>"Price (USD)"</th><th>"Quantity"</th></tr></thead><tbody>
@@ -234,12 +237,12 @@ pub fn App() -> impl IntoView {
                 {move ||snapshot.get().trades.into_iter().take(14).map(|v|view!{<tr><td class="buy">{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td><td>{text(&v["time"]).get(11..19).unwrap_or("").to_owned()}</td></tr>}).collect_view()}
             </tbody></table></section>
             <section class="panel"><h2>"Markets"</h2><table><thead><tr><th>"Pair"</th><th>"Reference price"</th></tr></thead><tbody>{move ||snapshot.get().instruments.into_iter().map(|v|view!{<tr><td>{text(&v["symbol"])}</td><td>{money(&v["reference_price"])}</td></tr>}).collect_view()}</tbody></table><p class="muted">"Autonomous traders place real simulated orders and settle against their account balances."</p></section>
-            <section class="panel account leaderboard"><h2>"Account balance leaderboard"</h2>
-                <p class="muted">"Total holdings in USD, including available and reserved balances. Crypto uses current reference prices."</p>
-                <div class="table-scroll"><table><thead><tr><th>"Rank"</th><th>"Account"</th><th>"Total value (USD)"</th></tr></thead><tbody>
-                    {move ||snapshot.get().leaderboard["accounts"].as_array().cloned().unwrap_or_default().into_iter().map(|v|view!{<tr><td>{v["rank"].to_string()}</td><td class="account-id">{v["trader"].as_str().map(str::to_owned).unwrap_or_else(||text(&v["account_id"]))}</td><td>{format!("${}",money(&v["equity_usd"]))}</td></tr>}).collect_view()}
+            <section class="panel account leaderboard"><h2>"Trader profit leaderboard"</h2>
+                <p class="muted">"Ranked by profit percentage since tracking began. Profit includes trading results and changes in crypto value; reserved funds count as holdings."</p>
+                <div class="table-scroll"><table><thead><tr><th>"Rank"</th><th>"Account"</th><th>"Profit"</th><th>"Profit (USD)"</th><th>"Tracking since (UTC)"</th></tr></thead><tbody>
+                    {move ||snapshot.get().leaderboard["accounts"].as_array().cloned().unwrap_or_default().into_iter().map(|v|view!{<tr><td>{v["rank"].to_string()}</td><td class="account-id">{v["trader"].as_str().map(str::to_owned).unwrap_or_else(||text(&v["account_id"]))}</td><td>{if v["profit_percent"].is_null(){"N/A".to_owned()}else{format!("{:+.2}%",number(&v["profit_percent"]))}}</td><td>{if v["profit_usd"].is_null(){"N/A".to_owned()}else{format!("{:+.2}",number(&v["profit_usd"]))}}</td><td>{text(&v["tracking_started_at"]).get(..19).unwrap_or("Pending").replace('T'," ")}</td></tr>}).collect_view()}
                 </tbody></table></div>
-                <div class="row"><button disabled=move ||leaderboard_offset.get()==0 on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_sub(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Previous"</button><span>{move ||format!("{} accounts",snapshot.get().leaderboard["total"].as_u64().unwrap_or(0))}</span><button disabled=move ||snapshot.get().leaderboard["has_more"]!=true on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_add(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Next"</button></div>
+                <div class="row"><button disabled=move ||leaderboard_offset.get()==0 on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_sub(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Previous"</button><span>{move ||format!("{} trader accounts",snapshot.get().leaderboard["total"].as_u64().unwrap_or(0))}</span><button disabled=move ||snapshot.get().leaderboard["has_more"]!=true on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_add(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Next"</button></div>
             </section>
             <section class="panel account system-liquidity"><h2>"System liquidity"</h2>
                 <p class="muted">"Built-in market-maker inventory supplies simulated liquidity and is excluded from trader rankings."</p>

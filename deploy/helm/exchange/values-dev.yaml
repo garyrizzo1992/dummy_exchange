@@ -8,3 +8,5 @@ tracing:
 # Enabled atomically with the image that supports trader mode.
 traders:
   enabled: true
+
+priceSource: coinbase

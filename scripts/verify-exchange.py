@@ -40,6 +40,17 @@ try:
  mine=next(r for r in board['accounts'] if r['account_id']==uid)
  expected=float(sql("SELECT 100000+1.5*reference_price FROM market_state WHERE instrument='BTC-USD'"))
  assert float(mine['equity_usd'])==expected,(mine,expected)
+ assert float(mine['initial_equity_usd'])==100000 and mine['tracking_started_at']
+ assert float(mine['profit_usd'])==expected-100000
+ assert abs(float(mine['profit_percent'])-(expected-100000)/1000)<0.000001
+ # A small account with a higher return outranks a larger portfolio.
+ tiny=str(uuid.uuid4())
+ sql("INSERT INTO users(id,email,password_hash,initial_equity_usd,profit_tracking_started_at) VALUES('"+tiny+"','profit-check@example.com','disabled',50,now())")
+ sql("INSERT INTO accounts(user_id,currency,available) VALUES('"+tiny+"','USD',100)")
+ winner=req('/v1/accounts/leaderboard')[1]['accounts'][0]
+ assert winner['account_id']==tiny and float(winner['profit_percent'])==100
+ sql("DELETE FROM accounts WHERE user_id='"+tiny+"'; DELETE FROM users WHERE id='"+tiny+"'")
+
  assert 'integration@example.com' not in json.dumps(board)
  assert board['accounts'][0]['rank']==1
  assert board['system_liquidity'] is None
@@ -64,6 +75,13 @@ try:
  sql("UPDATE accounts SET available=100000,reserved=0 WHERE user_id='"+uid+"' AND currency='USD'")
  sql("UPDATE accounts SET available=0,reserved=0 WHERE user_id='"+uid+"' AND currency='BTC'")
  before=req('/v1/accounts/balances',token=token)[1]
+ sql("UPDATE market_state SET price_source='coinbase',updated_at=now()-interval '31 seconds' WHERE instrument='BTC-USD'")
+ paused={'client_order_id':'stale-feed','instrument':'BTC-USD','side':'buy','order_type':'market','quantity':'0.001','limit_price':None}
+ assert req('/v1/orders',paused,token)[0]==503
+ assert req('/v1/accounts/balances',token=token)[1]==before
+ assert req('/v1/markets/BTC-USD/ticker')[1]['fresh'] is False
+ sql("UPDATE market_state SET price_source='simulated',updated_at=now() WHERE instrument='BTC-USD'")
+
  bad={'client_order_id':'exploit','instrument':'BTC-USD','side':'buy','order_type':'market','quantity':'1','limit_price':'-1'}
  assert req('/v1/orders',bad,token)[0]==400
  assert req('/v1/accounts/balances',token=token)[1]==before
@@ -82,6 +100,8 @@ try:
  trader=start('exchange-simulator'+suffix,{'TRADER_ID':'integration-trader-0','SIMULATOR_METRICS_BIND':'127.0.0.1:23003','TRADER_INTERVAL_MS':'500'},('trader',))
  time.sleep(2)
  uid=sql("SELECT user_id FROM simulated_traders WHERE trader_key='integration-trader-0'");assert uid
+ initial=sql("SELECT initial_equity_usd FROM users WHERE id='"+uid+"'");assert float(initial)>100000
+
  duplicate=start('exchange-simulator'+suffix,{'TRADER_ID':'integration-trader-0','SIMULATOR_METRICS_BIND':'127.0.0.1:23004'},('trader',))
  time.sleep(1)
  assert 'already has an active owner' in Path(__import__("tempfile").gettempdir(),'exchange-test-2.log').read_text()
@@ -90,6 +110,8 @@ try:
  restarted=start('exchange-simulator'+suffix,{'TRADER_ID':'integration-trader-0','SIMULATOR_METRICS_BIND':'127.0.0.1:23003','TRADER_INTERVAL_MS':'500'},('trader',))
  time.sleep(1)
  assert sql("SELECT user_id FROM simulated_traders WHERE trader_key='integration-trader-0'")==uid
+ assert sql("SELECT initial_equity_usd FROM users WHERE id='"+uid+"'")==initial
+
  assert sql("SELECT available+reserved FROM accounts WHERE user_id='"+uid+"' AND currency='USD'")==baseline
  matcher=start('exchange-worker'+suffix,{'WORKER_METRICS_BIND':'127.0.0.1:23001'})
  simulator=start('exchange-simulator'+suffix,{'SIMULATOR_METRICS_BIND':'127.0.0.1:23002'})

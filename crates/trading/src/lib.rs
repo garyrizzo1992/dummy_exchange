@@ -60,12 +60,15 @@ pub async fn place_order(
     if count >= 100 {
         return Err(TradingError::Invalid);
     }
-    let state = sqlx::query("SELECT reference_price FROM market_state WHERE instrument=$1")
+    let state = sqlx::query("SELECT reference_price,(price_source='simulated' OR updated_at > now()-interval '30 seconds') AS fresh FROM market_state WHERE instrument=$1")
         .bind(&order.instrument)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|_| TradingError::Unavailable)?
         .ok_or(TradingError::NotFound)?;
+    if !state.get::<bool, _>("fresh") {
+        return Err(TradingError::Unavailable);
+    }
     let reference: Decimal = state.get("reference_price");
     // Market buys can pay up to 5% above the reference price. Market sells have no floor.
     let price = if let Some(limit_price) = order.limit_price {

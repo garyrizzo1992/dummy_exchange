@@ -40,3 +40,5 @@ traders:
   enabled: true
   replicas: 10
   intervalMs: 2000
+
+priceSource: simulated

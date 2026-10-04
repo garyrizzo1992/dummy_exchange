@@ -68,6 +68,11 @@ pub async fn bootstrap(db: &mut PgConnection, identity: &str) -> anyhow::Result<
         tx.commit().await?;
         return Ok(user);
     }
+    let fresh:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM market_state WHERE price_source='coinbase' AND updated_at < now()-interval '30 seconds')").fetch_one(&mut *tx).await?;
+    anyhow::ensure!(
+        fresh,
+        "waiting for fresh prices before funding a new trader"
+    );
     let user = Uuid::new_v4();
     sqlx::query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,'disabled')")
         .bind(user)
@@ -82,6 +87,14 @@ pub async fn bootstrap(db: &mut PgConnection, identity: &str) -> anyhow::Result<
             .execute(&mut *tx)
             .await?;
     }
+    sqlx::query("UPDATE users SET initial_equity_usd=(
+        SELECT SUM((a.available+a.reserved) * CASE WHEN a.currency='USD' THEN 1 ELSE s.reference_price END)
+        FROM accounts a LEFT JOIN instruments i ON i.base_currency=a.currency AND i.quote_currency='USD'
+        LEFT JOIN market_state s ON s.instrument=i.symbol WHERE a.user_id=$1
+    ), profit_tracking_started_at=now(), profit_baseline_source=(SELECT price_source FROM market_state ORDER BY instrument LIMIT 1) WHERE id=$1")
+        .bind(user)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("INSERT INTO simulated_traders(trader_key,user_id) VALUES($1,$2)")
         .bind(identity)
         .bind(user)
@@ -113,10 +126,13 @@ async fn tick(
         }
     }
     let markets =
-        sqlx::query("SELECT instrument,reference_price FROM market_state ORDER BY instrument")
+        sqlx::query("SELECT instrument,reference_price FROM market_state WHERE price_source='simulated' OR updated_at > now()-interval '30 seconds' ORDER BY instrument")
             .fetch_all(&mut *db)
             .await?;
-    anyhow::ensure!(!markets.is_empty(), "no markets available");
+    if markets.is_empty() {
+        metrics::counter!("simulation_orders_skipped_total", "reason"=>"stale_prices").increment(1);
+        return Ok(());
+    }
     let market = &markets[rng.random_range(0..markets.len())];
     let instrument: String = market.get("instrument");
     let reference: Decimal = market.get("reference_price");

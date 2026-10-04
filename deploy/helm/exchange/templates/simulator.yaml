@@ -64,6 +64,8 @@ spec:
               value: info
             - name: SIMULATOR_METRICS_BIND
               value: 0.0.0.0:3002
+            - name: PRICE_SOURCE
+              value: {{ .Values.priceSource | quote }}
             - name: SIMULATION_SEED
               value: {{ .Values.simulationSeed | quote }}
             {{- include "exchange.databaseEnv" . | nindent 12 }}

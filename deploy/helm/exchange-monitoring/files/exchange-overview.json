@@ -348,6 +348,55 @@
         },
         "overrides": []
       }
+    },
+    {
+      "type": "stat",
+      "title": "Live price feed age",
+      "description": "Time since all Coinbase references last refreshed successfully. Orders pause at 30 seconds.",
+      "targets": [
+        {
+          "expr": "time() - max(market_price_feed_last_success_timestamp_seconds)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 63
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Live price feed errors / second",
+      "targets": [
+        {
+          "expr": "sum(rate(market_price_feed_errors_total[5m])) or vector(0)"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 63
+      }
     }
   ],
   "schemaVersion": 41,

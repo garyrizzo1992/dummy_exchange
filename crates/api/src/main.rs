@@ -183,7 +183,7 @@ async fn register(
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let id = Uuid::new_v4();
-    sqlx::query("INSERT INTO users(id,email,password_hash) VALUES($1,$2,$3)")
+    sqlx::query("INSERT INTO users(id,email,password_hash,initial_equity_usd,profit_tracking_started_at,profit_baseline_source) VALUES($1,$2,$3,100000,now(),(SELECT price_source FROM market_state ORDER BY instrument LIMIT 1))")
         .bind(id)
         .bind(&credentials.email)
         .bind(password_hash)
@@ -354,21 +354,28 @@ async fn leaderboard(
             FROM instruments i JOIN market_state s ON s.instrument=i.symbol
             WHERE i.quote_currency='USD'
         ), totals AS (
-            SELECT u.id, t.trader_key,
+            SELECT u.id, t.trader_key, u.initial_equity_usd, u.profit_tracking_started_at,
                    COALESCE(SUM((a.available+a.reserved) *
                      CASE WHEN a.currency='USD' THEN 1 ELSE COALESCE(p.price,0) END),0) AS equity
             FROM users u LEFT JOIN accounts a ON a.user_id=u.id
             LEFT JOIN prices p ON p.currency=a.currency
             LEFT JOIN simulated_traders t ON t.user_id=u.id
-            GROUP BY u.id,t.trader_key
-        ), ranked AS (
-            SELECT *, ROW_NUMBER() OVER (ORDER BY equity DESC,id) AS rank
+            GROUP BY u.id,t.trader_key,u.initial_equity_usd,u.profit_tracking_started_at
+        ), performance AS (
+            SELECT *, equity-initial_equity_usd AS profit_usd,
+                (equity-initial_equity_usd)*100/NULLIF(initial_equity_usd,0) AS profit_percent
             FROM totals WHERE id <> '00000000-0000-0000-0000-000000000001'::uuid
+        ), ranked AS (
+            SELECT *, ROW_NUMBER() OVER (ORDER BY profit_percent DESC NULLS LAST,
+                profit_usd DESC NULLS LAST,id) AS rank FROM performance
         ), page AS (
             SELECT * FROM ranked ORDER BY rank LIMIT 101 OFFSET $1
         ) SELECT jsonb_build_object(
             'accounts', COALESCE((SELECT jsonb_agg(jsonb_build_object(
-                'rank',rank,'account_id',id,'trader',trader_key,'equity_usd',equity::text
+                'rank',rank,'account_id',id,'trader',trader_key,'equity_usd',equity::text,
+                'profit_usd',profit_usd::text,'profit_percent',profit_percent::text,
+                'initial_equity_usd',initial_equity_usd::text,
+                'tracking_started_at',profit_tracking_started_at
             ) ORDER BY rank) FROM (SELECT * FROM page ORDER BY rank LIMIT 100) visible),'[]'::jsonb),
             'total',(SELECT COUNT(*) FROM ranked),
             'has_more',(SELECT COUNT(*) > 100 FROM page),
@@ -465,7 +472,7 @@ async fn ticker(
     State(app): State<AppState>,
     Path(symbol): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let row = sqlx::query("SELECT instrument,reference_price,change_24h,updated_at FROM market_state WHERE instrument=$1")
+    let row = sqlx::query("SELECT instrument,reference_price,change_24h,updated_at,price_source,source_updated_at,(price_source='simulated' OR updated_at > now()-interval '30 seconds') AS fresh FROM market_state WHERE instrument=$1")
         .bind(symbol)
         .fetch_optional(&app.db)
         .await
@@ -475,6 +482,9 @@ async fn ticker(
         "instrument": row.get::<String, _>("instrument"),
         "price": row.get::<Decimal, _>("reference_price"),
         "change_24h":row.get::<Decimal, _>("change_24h"),
+        "source": row.get::<String,_>("price_source"),
+        "fresh": row.get::<bool,_>("fresh"),
+        "source_updated_at": row.get::<Option<chrono::DateTime<chrono::Utc>>,_>("source_updated_at"),
         "updated_at": row.get::<chrono::DateTime<chrono::Utc>,_>("updated_at")
     })))
 }

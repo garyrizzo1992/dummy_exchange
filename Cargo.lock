@@ -788,6 +788,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "rand 0.9.5",
+ "reqwest",
  "rust_decimal",
  "serde_json",
  "sqlx",
@@ -1268,6 +1269,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -2637,6 +2639,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
