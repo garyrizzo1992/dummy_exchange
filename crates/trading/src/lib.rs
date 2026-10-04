@@ -80,14 +80,14 @@ pub async fn place_order(
     } else {
         Decimal::ZERO
     };
-    let reserve = if order.side == Side::Buy {
+    let reserve = exchange_domain::balance_amount(if order.side == Side::Buy {
         order
             .quantity
             .checked_mul(price)
             .ok_or(TradingError::Invalid)?
     } else {
         order.quantity
-    };
+    });
     let base = order
         .instrument
         .split('-')
@@ -237,13 +237,13 @@ async fn cancel_orders(
         } else {
             symbol.split('-').next().unwrap()
         };
-        let release = if side == "buy" {
+        let release = exchange_domain::balance_amount(if side == "buy" {
             remaining
                 .checked_mul(price)
                 .ok_or(TradingError::Unavailable)?
         } else {
             remaining
-        };
+        });
         sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
             .bind(id)
             .execute(&mut *tx)

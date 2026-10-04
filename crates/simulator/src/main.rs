@@ -1,3 +1,4 @@
+mod load;
 mod prices;
 mod trader;
 // Moves the demo market prices and adds buy and sell orders once a second.
@@ -32,6 +33,9 @@ async fn main() -> anyhow::Result<()> {
     });
     if env::args().nth(1).as_deref() == Some("trader") {
         return trader::run().await;
+    }
+    if env::args().nth(1).as_deref() == Some("load-controller") {
+        return load::run().await;
     }
     // `?` returns an error from this function if loading the URL or connecting fails.
     let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;

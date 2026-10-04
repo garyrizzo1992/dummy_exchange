@@ -9,7 +9,8 @@ PostgreSQL and monitoring have separate applications and lifecycles.
 | `exchange-api` | API Deployment, Service, optional Ingress, migration Job and JWT ExternalSecret |
 | `exchange-worker` | Matching worker Deployment and headless metrics Service |
 | `exchange` | Exchange market generator Deployment and metrics Service; the binary remains `exchange-simulator` |
-| `exchange-postgres` | PostgreSQL StatefulSet, Service, database ExternalSecret and optional legacy Redis |
+| `exchange-postgres` | PostgreSQL StatefulSet, Service and database ExternalSecret |
+| `exchange-kafka` | Three Strimzi KRaft brokers, persistent storage and command topic |
 | `exchange-monitoring` | Prometheus, Grafana, exporters, alerts, dashboards and Grafana ExternalSecret |
 
 Cloudflared routes public requests directly to private Kubernetes Services.
@@ -32,7 +33,6 @@ Connection settings use `database.host`, `port`, `name`, `user`, `sslMode`, and
 `secret.name`/`secret.key`. An empty host resolves to `<resource-prefix>-postgres`.
 For an external database, set the explicit host in all three business charts
 and monitoring, then disable the PostgreSQL workload with `enabled: false`.
-Redis has its own switch, `redis.enabled`, in the PostgreSQL chart.
 
 Keep the release name, namespace and resource prefix consistent across all five
 charts. The Argo manifests use `dummy-exchange-dev` in development and
@@ -42,12 +42,10 @@ names, immutable selectors, StatefulSet service names and PVC identities.
 Argo must use annotation tracking so its application names do not overwrite the
 shared Helm instance labels. Ansible and the local bootstrap configure this.
 
-Redis is unused by the Rust services. It is retained by default to preserve
-existing installations, without being injected into application environments.
-For a new cluster without Redis, set `exchange-postgres`'s `redis.enabled: false`
-and `exchange-monitoring`'s `redisExporter.enabled: false`. Disabling an exporter
-also removes its scrape target and availability alert. Existing Redis resources
-have pruning disabled; deleting them and their data is an explicit operation.
+KEDA owns worker and trader replicas when autoscaling is enabled. Their templates
+omit replicas and Argo respects ignored replica fields during sync. See
+[Kafka and scaling](../../docs/keda-scaling.md) for bounds, lag thresholds and
+the random load controller. Application Redis and its exporter are removed.
 
 Prometheus runs with `Recreate` and a single PVC. Retention defaults to 15 days
 and 4 GB of blocks on a 5 GiB volume; WAL and other files need additional room.
@@ -140,7 +138,7 @@ Do not uninstall the old release, delete PVCs or cascade-delete applications.
 
    Use the actual old Vault identifiers if they differ. Apply the staged
    PostgreSQL application, perform a full sync, and wait for `Synced`/`Healthy`.
-   Verify PostgreSQL, Redis and the existing database SecretStore/ExternalSecret
+   Verify PostgreSQL and the existing database SecretStore/ExternalSecret
    now carry the data application's tracking annotations. No StatefulSet or PVC
    should be deleted or recreated.
 3. Stage and sync the monitoring application, still with automation disabled.

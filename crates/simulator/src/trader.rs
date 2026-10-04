@@ -37,6 +37,7 @@ pub async fn run() -> anyhow::Result<()> {
     }
 }
 async fn session(identity: &str, interval: u64, rng: &mut StdRng) -> anyhow::Result<()> {
+    let publisher = exchange_config::kafka::Publisher::from_env()?;
     let mut db =
         PgConnection::connect_with(&exchange_config::database::connection_options()?).await?;
     let locked: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1,0))")
@@ -50,7 +51,9 @@ async fn session(identity: &str, interval: u64, rng: &mut StdRng) -> anyhow::Res
     loop {
         let span = tracing::info_span!("trader.tick", trader=%identity, account_id=%user, trace_id=tracing::field::Empty);
         exchange_config::telemetry::set_parent(&span, &std::collections::HashMap::new());
-        tick(&mut db, identity, user, rng).instrument(span).await?;
+        tick(&mut db, identity, user, rng, publisher.as_ref())
+            .instrument(span)
+            .await?;
         sleep(Duration::from_millis(
             interval + rng.random_range(0..=interval / 2),
         ))
@@ -108,6 +111,7 @@ async fn tick(
     identity: &str,
     user: Uuid,
     rng: &mut StdRng,
+    publisher: Option<&exchange_config::kafka::Publisher>,
 ) -> anyhow::Result<()> {
     sqlx::query("UPDATE simulated_traders SET last_seen_at=now() WHERE trader_key=$1")
         .bind(identity)
@@ -117,6 +121,18 @@ async fn tick(
     let stale = sqlx::query_scalar::<_,Uuid>("SELECT id FROM orders WHERE user_id=$1 AND status IN ('open','partially_filled') AND created_at < now()-interval '30 seconds' ORDER BY sequence LIMIT 25")
         .bind(user).fetch_all(&mut *db).await?;
     for id in stale {
+        if let Some(publisher) = publisher {
+            publisher
+                .send(
+                    identity,
+                    user,
+                    exchange_config::kafka::Action::Cancel { order_id: id },
+                )
+                .await?;
+            metrics::counter!("simulation_commands_published_total", "action"=>"cancel")
+                .increment(1);
+            continue;
+        }
         match exchange_trading::cancel_order(db, user, id).await {
             Ok(_) => {
                 metrics::counter!("simulation_orders_cancelled_total").increment(1);
@@ -160,6 +176,17 @@ async fn tick(
             None
         },
     };
+    if let Some(publisher) = publisher {
+        publisher
+            .send(
+                identity,
+                user,
+                exchange_config::kafka::Action::Place { order },
+            )
+            .await?;
+        metrics::counter!("simulation_commands_published_total", "action"=>"place").increment(1);
+        return Ok(());
+    }
     match exchange_trading::place_order(db, user, order).await {
         Ok((_, value)) => {
             metrics::counter!("simulation_orders_placed_total", "instrument"=>instrument)

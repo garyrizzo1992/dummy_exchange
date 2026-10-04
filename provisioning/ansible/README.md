@@ -49,7 +49,6 @@ From the repository root, use Bastion without downloading an administrator kubec
 bash provisioning/ansible/dev-kubectl.sh get pods -A
 bash provisioning/ansible/dev-forward.sh prometheus
 bash provisioning/ansible/dev-forward.sh postgres
-bash provisioning/ansible/dev-forward.sh redis
 ```
 
 Forwarding binds to localhost. Keep each forward open in its own terminal;

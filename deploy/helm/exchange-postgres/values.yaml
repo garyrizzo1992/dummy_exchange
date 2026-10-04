@@ -22,19 +22,6 @@ resources:
   limits:
     cpu: '1'
     memory: 512Mi
-redis:
-  enabled: true
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 250m
-      memory: 128Mi
-  image: redis:8.10.1-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
-  persistence:
-    size: 1Gi
-    storageClass: ''
 externalSecrets:
   enabled: false
   region: eu-milan-1

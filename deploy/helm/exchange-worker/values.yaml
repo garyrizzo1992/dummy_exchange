@@ -17,6 +17,16 @@ image:
   tag: main
   digest: ''
 replicas: 2
+kafka:
+  enabled: false
+  bootstrapServers: exchange-kafka-kafka-bootstrap:9092
+  topic: exchange.order-commands
+  consumerGroup: exchange-workers
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 6
+  lagThreshold: 25
 resources:
   requests:
     cpu: 100m

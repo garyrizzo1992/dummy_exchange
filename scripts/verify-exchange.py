@@ -11,7 +11,7 @@ processes=[]
 def start(binary,extra=None,args=()):
  e=env.copy();e.update(extra or {})
  log=open(Path(__import__("tempfile").gettempdir())/('exchange-test-'+str(len(processes))+'.log'),'w')
- p=subprocess.Popen([str(root/'target/debug'/binary),*args],cwd=root,env=e,stdout=log,stderr=log);processes.append((p,log));return p
+ p=subprocess.Popen([str(Path(os.environ.get('EXCHANGE_BIN_DIR', root/'target/debug'))/binary),*args],cwd=root,env=e,stdout=log,stderr=log);processes.append((p,log));return p
 def sql(query):
  return subprocess.check_output(['docker','exec','exchange-verification-postgres','psql','-U','postgres','-d','dummy_exchange','-Atc',query],text=True).strip()
 def req(path,body=None,token=None):
@@ -165,6 +165,7 @@ try:
     time.sleep(0.2)
    else:raise AssertionError('Market order did not fill promptly: '+symbol+' '+side)
    assert sql("SELECT count(*) FROM fills WHERE (maker_order_id='"+oid+"' OR taker_order_id='"+oid+"') AND price<=0")=='0'
+   assert sql("SELECT count(*) FROM accounts WHERE user_id=(SELECT user_id FROM orders WHERE id='"+oid+"') AND reserved<>0")=='0', 'Completed orders must release every reserved decimal'
  assert sql("SELECT count(*) FROM accounts WHERE available<0 OR reserved<0")=='0'
  assert req('/v1/simulation')[1]['active']==1
  assert int(sql("SELECT count(*) FROM orders WHERE user_id='"+uid+"' AND trace_context ? 'traceparent'"))>0

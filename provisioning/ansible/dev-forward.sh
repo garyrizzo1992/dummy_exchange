@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
   echo 'Usage: bash provisioning/ansible/dev-forward.sh <service> [local-port]'
-  echo 'Services: api, grafana, argocd, prometheus, postgres, redis, worker, simulator, postgres-exporter, redis-exporter'
+  echo 'Services: api, grafana, argocd, prometheus, postgres, worker, simulator, postgres-exporter'
 }
 if [[ $# == 0 || ${1:-} == --help ]]; then usage; exit 0; fi
 if [[ $# -gt 2 ]]; then usage >&2; exit 1; fi
@@ -16,11 +16,9 @@ case "$1" in
   argocd) namespace=argocd; service=argocd-server; service_port=443; default_port=8443 ;;
   prometheus) service_port=9090; default_port=9090 ;;
   postgres) service_port=5432; default_port=5432 ;;
-  redis) service_port=6379; default_port=6379 ;;
   worker) service_port=3001; default_port=3001 ;;
   simulator) service_port=3002; default_port=3002 ;;
   postgres-exporter) service_port=9187; default_port=9187 ;;
-  redis-exporter) service_port=9121; default_port=9121 ;;
   *) usage >&2; exit 1 ;;
 esac
 local_port="${2:-$default_port}"

@@ -1,0 +1,32 @@
+{{- if .Values.autoscaling.enabled }}
+{{- if not .Values.kafka.enabled }}{{ fail "worker autoscaling requires Kafka" }}{{- end }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "exchange-worker.fullname" . }}-worker
+spec:
+  scaleTargetRef:
+    name: {{ include "exchange-worker.fullname" . }}-worker
+  pollingInterval: 15
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  fallback:
+    failureThreshold: 3
+    replicas: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120
+        scaleUp:
+          stabilizationWindowSeconds: 0
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ .Values.kafka.bootstrapServers | quote }}
+        consumerGroup: {{ .Values.kafka.consumerGroup | quote }}
+        topic: {{ .Values.kafka.topic | quote }}
+        lagThreshold: {{ .Values.autoscaling.lagThreshold | quote }}
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+{{- end }}

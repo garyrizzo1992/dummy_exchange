@@ -165,16 +165,61 @@
     - item.stdout | trim | length > 0
     - (item.stdout | from_json).spec.strategy.type != 'Recreate' or (item.stdout | from_json).spec.strategy.rollingUpdate is defined
 
+- name: Copy Kafka and KEDA operator application manifests
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../deploy/argocd/keda-dev.yaml"
+    dest: /tmp/exchange-keda-dev.yaml
+    mode: '0644'
+
+- name: Apply Kafka and KEDA operators
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/exchange-keda-dev.yaml
+
+- name: Wait for Kafka and KEDA operators
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - -n
+      - argocd
+      - "application/{{ item }}"
+      - --for=jsonpath={.status.health.status}=Healthy
+      - --timeout=10m
+  loop: [keda-dev, strimzi-dev]
+  changed_when: false
+
+- name: Wait for Kafka and KEDA custom resource definitions
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig
+      - /etc/kubernetes/admin.conf
+      - wait
+      - "crd/{{ item }}"
+      - --for=condition=Established
+      - --timeout=5m
+  loop: [kafkas.kafka.strimzi.io, kafkanodepools.kafka.strimzi.io, scaledobjects.keda.sh]
+  changed_when: false
+
 - name: Copy infrastructure application manifests
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../../deploy/argocd/{{ item }}-dev.yaml"
     dest: "/tmp/exchange-{{ item }}-dev.yaml"
     mode: '0644'
-  loop: [postgres, monitoring]
+  loop: [postgres, monitoring, kafka]
 
 - name: Apply infrastructure applications
   ansible.builtin.command: "kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/exchange-{{ item }}-dev.yaml"
-  loop: [postgres, monitoring]
+  loop: [postgres, monitoring, kafka]
+
+- name: Wait for three Kafka brokers before enabling command producers
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf wait -n dummy-exchange kafka/exchange-kafka --for=condition=Ready --timeout=10m
+  register: kafka_ready
+  retries: 3
+  delay: 20
+  until: kafka_ready.rc == 0
+  changed_when: false
 
 - name: Wait for the data application to finish syncing
   ansible.builtin.command:

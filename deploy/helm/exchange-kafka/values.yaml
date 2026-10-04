@@ -1,0 +1,10 @@
+clusterName: exchange-kafka
+kafkaVersion: 4.3.1
+metadataVersion: 4.3-IV0
+storageClass: local-path
+storageSize: 5Gi
+topic: exchange.order-commands
+partitions: 12
+resources:
+  requests: {cpu: 250m, memory: 1Gi}
+  limits: {cpu: '1', memory: 1536Mi}

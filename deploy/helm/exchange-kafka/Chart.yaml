@@ -1,0 +1,6 @@
+apiVersion: v2
+name: exchange-kafka
+description: Three persistent KRaft brokers and trader command topic managed by Strimzi
+type: application
+version: 0.1.0
+appVersion: 4.3.1

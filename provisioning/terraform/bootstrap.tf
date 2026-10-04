@@ -38,6 +38,8 @@ resource "terraform_data" "ansible" {
       filesha256("${path.module}/../../deploy/argocd/dummy-exchange-dev.yaml"),
       filesha256("${path.module}/../../deploy/argocd/postgres-dev.yaml"),
       filesha256("${path.module}/../../deploy/argocd/monitoring-dev.yaml"),
+      filesha256("${path.module}/../../deploy/argocd/keda-dev.yaml"),
+      filesha256("${path.module}/../../deploy/argocd/kafka-dev.yaml"),
       filesha256("${path.module}/../../deploy/argocd/tunnel-dev.yaml")
     ]))
   }

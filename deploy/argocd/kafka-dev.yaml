@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dummy-exchange-kafka-dev
+  namespace: argocd
+spec:
+  project: default
+  destination: {server: 'https://kubernetes.default.svc', namespace: dummy-exchange}
+  source:
+    repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
+    targetRevision: main
+    path: deploy/helm/exchange-kafka
+    helm:
+      releaseName: dummy-exchange-dev
+  syncPolicy:
+    automated: {enabled: true, prune: false, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

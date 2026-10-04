@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 [dependencies]
 exchange-config = { path = "../config" }
+exchange-trading = { path = "../trading" }
+rdkafka.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 chrono.workspace = true

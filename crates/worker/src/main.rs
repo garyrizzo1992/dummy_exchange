@@ -1,4 +1,5 @@
 //! Matches buy and sell orders, then updates balances in the same transaction.
+mod commands;
 
 use axum::{Router, extract::State, routing::get};
 use exchange_domain::{BookOrder, OrderType, Side, execution_price, match_taker, price_time};
@@ -27,15 +28,41 @@ async fn main() -> anyhow::Result<()> {
             warn!(%error, "worker metrics server stopped");
         }
     });
-    let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .connect_with(exchange_config::database::connection_options()?)
+        .await?;
+    let consumer = exchange_config::kafka::brokers()
+        .map(|brokers| tokio::spawn(commands::supervise(db.clone(), brokers)));
     let worker_id = env::var("WORKER_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
-    loop {
-        if let Err(error) = tick(&db, &worker_id).await {
-            metrics::counter!("matching_worker_errors_total").increment(1);
-            warn!(%error,"worker tick failed")
+    let matching = async {
+        loop {
+            if let Err(error) = tick(&db, &worker_id).await {
+                metrics::counter!("matching_worker_errors_total").increment(1);
+                warn!(%error,"worker tick failed")
+            }
+            sleep(Duration::from_millis(100)).await;
         }
-        sleep(Duration::from_millis(100)).await;
+    };
+    tokio::select! { _ = matching => {}, _ = shutdown() => {} }
+    if let Some(consumer) = consumer {
+        consumer.abort();
+        let _ = consumer.await;
     }
+    db.close().await;
+    Ok(())
+}
+
+async fn shutdown() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 async fn tick(db: &PgPool, worker_id: &str) -> anyhow::Result<()> {
@@ -219,11 +246,12 @@ async fn apply_fill(
     quantity: Decimal,
 ) -> anyhow::Result<(bool, bool)> {
     // SQLx needs the connection inside the borrowed transaction: &mut **tx.
-    let buy =
-        sqlx::query("SELECT user_id,instrument,limit_price,is_system FROM orders WHERE id=$1")
-            .bind(buy_id)
-            .fetch_one(&mut **tx)
-            .await?;
+    let buy = sqlx::query(
+        "SELECT user_id,instrument,limit_price,remaining,is_system FROM orders WHERE id=$1",
+    )
+    .bind(buy_id)
+    .fetch_one(&mut **tx)
+    .await?;
     let sell = sqlx::query("SELECT user_id,instrument,is_system FROM orders WHERE id=$1")
         .bind(sell_id)
         .fetch_one(&mut **tx)
@@ -234,8 +262,12 @@ async fn apply_fill(
     let base = instrument.split('-').next().unwrap();
     let quote = instrument.split('-').nth(1).unwrap();
     let reserved_price: Decimal = buy.get("limit_price");
-    let reserved = quantity * reserved_price;
-    let spent = quantity * price;
+    let remaining: Decimal = buy.get("remaining");
+    // Release the difference of rounded outstanding reservations. Rounding each
+    // fill independently can leave tiny reservations after a complete fill.
+    let reserved = exchange_domain::balance_amount(remaining * reserved_price)
+        - exchange_domain::balance_amount((remaining - quantity) * reserved_price);
+    let spent = exchange_domain::balance_amount(quantity * price);
     let buy_is_system: bool = buy.get("is_system");
     let sell_is_system: bool = sell.get("is_system");
 

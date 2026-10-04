@@ -16,7 +16,7 @@ settlement remain simulated. No real money changes hands.
 | Prometheus | [prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) | Cloudflare Access email-code login for allowed operators. |
 
 These hostnames use Cloudflare Tunnel to reach private Kubernetes services.
-PostgreSQL, Redis, the Kubernetes API and application health/metrics endpoints
+PostgreSQL, Kafka, the Kubernetes API and application health/metrics endpoints
 remain private. See [development access](provisioning/terraform/docs/dev-access.md)
 for authentication and private forwarding instructions.
 
@@ -39,8 +39,11 @@ runs the Ansible playbook when the nodes or tracked setup files change.
 
 Five Helm charts separate the API, matching worker, exchange market generator,
 PostgreSQL and monitoring. One Argo CD application coordinates the three business
-charts; PostgreSQL and monitoring have independent applications. Optional legacy
-Redis stays with database infrastructure. See the [chart layout](deploy/helm/README.md).
+charts; PostgreSQL, monitoring and Kafka have independent applications.
+Kafka has three brokers; KEDA scales workers on command lag and scales the
+trader StatefulSet from a bounded random load target. Runtime replica counts
+are not written to Git. See [Kafka and scaling](docs/keda-scaling.md) and the
+[chart layout](deploy/helm/README.md).
 
 ### From a code change to a running release
 
@@ -172,7 +175,7 @@ buy and sell orders, while the simulator changes prices and adds orders for
 users to trade against.
 
 The services share a PostgreSQL database for balances, orders and completed
-trades. Docker Compose also starts Redis, though the Rust code does not use it yet.
+trades. The Kafka Compose overlay adds three brokers and a trader command producer.
 
 Orders match at the best available price, with older orders going first when
 prices are equal. Placing an order reserves the money needed to fill it.
@@ -213,8 +216,7 @@ work with the previous app version during a rolling update. Allow time for
 shutdown and use non-root containers with read-only filesystems where practical.
 Load test before choosing CPU and memory limits, and account for every replica's
 database connections. JSON logs go to stdout; the API supports `x-request-id`.
-Redis is optional and unused by the current Rust services. JWT key rotation
-would need support for validating tokens signed with the previous key.
+JWT key rotation would need support for validating tokens signed with the previous key.
 
 ## Start with Docker
 
@@ -331,8 +333,8 @@ These are manual exercises, not automated test coverage:
   of the same market, with no duplicate balance updates.
 - Stop PostgreSQL after the services start. API readiness should return `503`,
   and the worker should log errors and retry. Check recovery after restarting it.
-- Stop Redis. Current trading should be unaffected because the Rust code does
-  not use it.
+- Restart a Kafka consumer after order acceptance. Redelivery should reuse the
+  existing order without reserving balances twice.
 - Interrupt an order request before its transaction commits. Check that the
   reservation, order and outbox event roll back together. A lost HTTP response
   alone does not prove that the transaction failed.

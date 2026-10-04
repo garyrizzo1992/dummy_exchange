@@ -7,6 +7,11 @@ use std::cmp::Ordering;
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Account columns use ten decimal places; match PostgreSQL numeric rounding.
+pub fn balance_amount(amount: Decimal) -> Decimal {
+    amount.round_dp_with_strategy(10, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Side {
@@ -308,6 +313,20 @@ pub fn execution_price(
 #[cfg(test)]
 mod execution_tests {
     use super::*;
+    #[test]
+    fn partial_reservation_releases_sum_to_the_original_amount() {
+        let price = Decimal::new(85217526712345, 10);
+        let mut remaining = Decimal::new(123456789, 8);
+        let original = balance_amount(remaining * price);
+        let mut released = Decimal::ZERO;
+        for quantity in [Decimal::new(1234567, 8), Decimal::new(33333333, 8)] {
+            released +=
+                balance_amount(remaining * price) - balance_amount((remaining - quantity) * price);
+            remaining -= quantity;
+        }
+        released += balance_amount(remaining * price);
+        assert_eq!(released, original);
+    }
     #[test]
     fn market_sells_receive_the_resting_bid_not_zero() {
         let buy = BookOrder {

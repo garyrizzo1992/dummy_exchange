@@ -26,7 +26,9 @@ metadata:
     {{- include "exchange.labels" . | nindent 4 }}
     app.kubernetes.io/component: trader
 spec:
+  {{- if not .Values.traders.autoscaling.enabled }}
   replicas: {{ .Values.traders.replicas }}
+  {{- end }}
   serviceName: {{ $name }}-trader
   podManagementPolicy: Parallel
   selector:
@@ -39,6 +41,20 @@ spec:
         {{- include "exchange.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: trader
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "exchange.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: trader
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       {{- if .Values.tracing.enabled }}
@@ -76,6 +92,12 @@ spec:
               value: {{ .Values.traders.intervalMs | quote }}
             - name: SIMULATION_SEED
               value: {{ .Values.simulationSeed | quote }}
+            {{- if .Values.kafka.enabled }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_COMMAND_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            {{- end }}
             {{- include "exchange.databaseEnv" . | nindent 12 }}
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }
@@ -84,7 +106,7 @@ spec:
             httpGet: { path: /healthz, port: metrics }
             initialDelaySeconds: 5
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.traders.resources | nindent 12 }}
 
         {{- if .Values.tracing.enabled }}
         - name: otel-collector

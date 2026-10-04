@@ -1,6 +1,7 @@
 FROM --platform=$BUILDPLATFORM rust:1.98.1-bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS frontend
 
 WORKDIR /app
+
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 RUN rustup target add wasm32-unknown-unknown \
@@ -13,6 +14,8 @@ RUN rustup target add wasm32-unknown-unknown \
 FROM rust:1.98.1-bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS builder
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install --no-install-recommends -y cmake libcurl4-openssl-dev && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates

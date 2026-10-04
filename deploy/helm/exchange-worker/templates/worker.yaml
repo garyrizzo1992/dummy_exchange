@@ -23,7 +23,9 @@ metadata:
     {{- include "exchange-worker.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicas }}
+  {{- end }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -39,6 +41,10 @@ spec:
         {{- include "exchange-worker.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
     spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       {{- if .Values.tracing.enabled }}
@@ -68,6 +74,14 @@ spec:
               value: info
             - name: WORKER_METRICS_BIND
               value: 0.0.0.0:3001
+            {{- if .Values.kafka.enabled }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_COMMAND_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            - name: KAFKA_CONSUMER_GROUP
+              value: {{ .Values.kafka.consumerGroup | quote }}
+            {{- end }}
             {{- include "exchange-worker.databaseEnv" . | nindent 12 }}
           livenessProbe:
             httpGet: { path: /healthz, port: metrics }

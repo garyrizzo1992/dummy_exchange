@@ -1,0 +1,86 @@
+{{- if and .Values.traders.enabled .Values.traders.autoscaling.enabled }}
+{{- $name := include "exchange.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-load-controller
+spec:
+  ports:
+    - {name: metrics, port: 3004, targetPort: metrics}
+  selector:
+    {{- include "exchange.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: load-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-load-controller
+  labels:
+    {{- include "exchange.labels" . | nindent 4 }}
+    app.kubernetes.io/component: load-controller
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "exchange.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: load-controller
+  template:
+    metadata:
+      labels:
+        {{- include "exchange.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: load-controller
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: load-controller
+          image: {{ include "exchange.applicationImage" (dict "root" . "image" .Values.image) }}
+          args: ["load-controller"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          ports: [{name: metrics, containerPort: 3004}]
+          env:
+            - {name: SIMULATOR_METRICS_BIND, value: "0.0.0.0:3004"}
+            - {name: RUST_LOG, value: info}
+            - {name: LOAD_MIN_TRADERS, value: {{ .Values.traders.autoscaling.minReplicas | quote }}}
+            - {name: LOAD_MAX_TRADERS, value: {{ .Values.traders.autoscaling.maxReplicas | quote }}}
+            - {name: LOAD_INTERVAL_SECONDS, value: {{ .Values.traders.autoscaling.intervalSeconds | quote }}}
+          readinessProbe: {httpGet: {path: /healthz, port: metrics}}
+          livenessProbe: {httpGet: {path: /healthz, port: metrics}, initialDelaySeconds: 10}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 96Mi}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}-trader
+spec:
+  scaleTargetRef:
+    name: {{ $name }}-trader
+    kind: StatefulSet
+  pollingInterval: 15
+  minReplicaCount: {{ .Values.traders.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.traders.autoscaling.maxReplicas }}
+  fallback:
+    failureThreshold: 3
+    replicas: {{ .Values.traders.autoscaling.minReplicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://{{ $name }}-prometheus:9090
+        query: max(simulation_target_traders{job="trader-load"})
+        threshold: "1"
+        ignoreNullValues: "false"
+{{- end }}

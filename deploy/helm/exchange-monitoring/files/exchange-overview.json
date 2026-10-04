@@ -223,15 +223,11 @@
     },
     {
       "type": "timeseries",
-      "title": "Database and Redis availability",
+      "title": "PostgreSQL availability",
       "targets": [
         {
           "expr": "pg_up",
           "legendFormat": "postgres"
-        },
-        {
-          "expr": "redis_up",
-          "legendFormat": "redis"
         }
       ],
       "gridPos": {
@@ -299,52 +295,6 @@
       "fieldConfig": {
         "defaults": {
           "unit": "bytes"
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 17,
-      "title": "Redis memory usage",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 0,
-        "y": 55,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "redis_memory_used_bytes"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 18,
-      "title": "Redis evictions / second",
-      "type": "timeseries",
-      "gridPos": {
-        "x": 12,
-        "y": 55,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "rate(redis_evicted_keys_total[$__rate_interval])"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
         },
         "overrides": []
       }

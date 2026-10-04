@@ -5,6 +5,12 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+rdkafka.workspace = true
+exchange-domain = { path = "../domain" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tokio.workspace = true
 sqlx.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

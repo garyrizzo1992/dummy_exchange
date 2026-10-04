@@ -9,6 +9,15 @@ metadata:
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    name: dummy-exchange-dev-dummy-exchange-worker
+    jsonPointers: [/spec/replicas]
+  - group: apps
+    kind: StatefulSet
+    name: dummy-exchange-dev-dummy-exchange-trader
+    jsonPointers: [/spec/replicas]
   project: default
   destination:
     server: https://kubernetes.default.svc
@@ -28,6 +37,7 @@ spec:
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
+    - RespectIgnoreDifferences=true
   sources:
   - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
     targetRevision: main

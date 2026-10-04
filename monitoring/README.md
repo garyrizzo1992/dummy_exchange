@@ -1,12 +1,12 @@
 # Local monitoring
 
 Prometheus collects metrics every 15 seconds from the API, matching workers,
-market simulator, PostgreSQL exporter and Redis exporter. Grafana comes with
+market simulator and PostgreSQL exporter. Grafana comes with
 Prometheus set up as its data source and an Exchange Overview dashboard.
 
 The dashboard shows buy and sell orders, cancellations, user trades and their
 value, market prices, API response times and status codes. It also tracks worker
-and simulator errors and whether PostgreSQL and Redis are available.
+and simulator errors and PostgreSQL availability.
 
 Metric labels (`instrument`, `side`, and `order_type`) have a limited set of
 values. Do not add user or order IDs as labels.
@@ -28,7 +28,11 @@ docker compose up --build
 | API metrics | http://localhost:3000/metrics | Read application metrics. |
 
 Worker and simulator metrics are available inside the Compose network on ports
-3001 and 3002. The PostgreSQL and Redis exporters are also internal.
+3001 and 3002. The PostgreSQL exporter is also internal.
+
+Development also provides a **Kafka and autoscaling** dashboard for consumer
+lag, worker replicas, random trader targets, live trader replicas and command
+throughput. See [the scaling configuration](../docs/keda-scaling.md).
 
 You can view alert rules in Prometheus and Grafana, but this local setup does
 not send notifications. To send them, connect Alertmanager or Grafana contact

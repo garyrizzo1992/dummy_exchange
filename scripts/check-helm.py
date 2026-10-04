@@ -33,7 +33,7 @@ def main():
     def validate(output):
         docs = [d for d in yaml.safe_load_all(output) if d]
         if args.kubeconform:
-            core = [d for d in docs if not d['apiVersion'].startswith('external-secrets.io/')]
+            core = [d for d in docs if not d['apiVersion'].startswith(('external-secrets.io/', 'keda.sh/', 'kafka.strimzi.io/'))]
             result = subprocess.run([args.kubeconform, '-strict', '-summary', '-kubernetes-version', '1.27.0'],
                                     input=yaml.safe_dump_all(core), text=True, capture_output=True)
             if result.returncode:
@@ -55,12 +55,12 @@ def main():
 
     expected = {
         'exchange-api': {'api', 'migration'}, 'exchange-worker': {'worker'}, 'exchange': {'simulator', 'trader'},
-        'exchange-postgres': {'postgres', 'redis'},
-        'exchange-monitoring': {'prometheus', 'grafana', 'postgres-exporter', 'redis-exporter',
+        'exchange-postgres': {'postgres'},
+        'exchange-monitoring': {'prometheus', 'grafana', 'postgres-exporter',
                                 'kube-state-metrics', 'node-exporter', 'loki', 'alloy', 'tempo'},
     }
     actual = {p.name for p in CHARTS.iterdir() if (p / 'Chart.yaml').exists()}
-    assert actual == set(expected) | {'exchange-tunnel'}, actual
+    assert actual == set(expected) | {'exchange-tunnel', 'exchange-kafka'}, actual
     for profile in (None, 'dev', 'minikube'):
         release = 'dummy-exchange' if profile == 'minikube' else 'dummy-exchange-dev'
         prefix = 'exchange' if profile == 'minikube' else f'{release}-dummy-exchange'
@@ -110,7 +110,7 @@ def main():
         assert job['metadata']['annotations']['argocd.argoproj.io/hook'] == 'Sync'
         assert job['metadata']['annotations']['argocd.argoproj.io/sync-wave'] == '-1'
         assert job['spec']['template']['spec']['containers'][0]['image'] == workloads['api']['spec']['template']['spec']['containers'][0]['image']
-        for component in ('postgres', 'redis'):
+        for component in ('postgres',):
             db = workloads[component]
             assert db['spec']['serviceName'] == f'{prefix}-{component}'
             assert db['spec']['volumeClaimTemplates'][0]['metadata']['name'] == 'data'
@@ -142,13 +142,13 @@ def main():
                 env = doc['spec']['template']['spec']['containers'][0]['env']
                 assert next(e['value'] for e in env if e['name'] == 'PGHOST') == 'external-db'
                 assert next(e['value'] for e in env if e['name'] == 'PGPORT') == '5433'
-    assert not render('exchange-postgres', overrides=('enabled=false', 'redis.enabled=false'))
+    assert not render('exchange-postgres', overrides=('enabled=false',))
     assert not render('exchange-monitoring', overrides=('enabled=false',))
-    monitoring = render('exchange-monitoring', overrides=('postgresExporter.enabled=false', 'redisExporter.enabled=false'))
-    assert not any(d['metadata']['name'].endswith(('-postgres-exporter', '-redis-exporter')) for d in monitoring)
+    monitoring = render('exchange-monitoring', overrides=('postgresExporter.enabled=false',))
+    assert not any(d['metadata']['name'].endswith('-postgres-exporter') for d in monitoring)
     config = next(d for d in monitoring if d['kind'] == 'ConfigMap' and 'prometheus.yml' in d['data'])
-    assert not any(j['job_name'] in ('postgres', 'redis') for j in yaml.safe_load(config['data']['prometheus.yml'])['scrape_configs'])
-    assert not any(a['alert'] in ('PostgreSQLUnavailable', 'RedisUnavailable') for a in yaml.safe_load(config['data']['alerts.yml'])['groups'][0]['rules'])
+    assert not any(j['job_name'] == 'postgres' for j in yaml.safe_load(config['data']['prometheus.yml'])['scrape_configs'])
+    assert not any(a['alert'] == 'PostgreSQLUnavailable' for a in yaml.safe_load(config['data']['alerts.yml'])['groups'][0]['rules'])
     dashboard = next(d for d in monitoring if d['kind'] == 'ConfigMap' and 'exchange-overview.json' in d['data'])
     assert json.loads(dashboard['data']['exchange-overview.json'])['panels']
     for filename in ('kubernetes-overview.json', 'kubernetes-logs.json'):
@@ -172,11 +172,30 @@ def main():
         run(args.helm, 'template', 'test', str(CHARTS / chart), '--set', setting, success=False)
     render('exchange-tunnel')
     render('exchange-tunnel', overrides=('enabled=true',))
+    for chart, overrides, kind, suffix in [
+        ('exchange-worker', ('kafka.enabled=true','autoscaling.enabled=true'), 'Deployment', '-worker'),
+        ('exchange', ('kafka.enabled=true','traders.autoscaling.enabled=true'), 'StatefulSet', '-trader'),
+    ]:
+        docs=render(chart, overrides=overrides)
+        workload=next(d for d in docs if d['kind']==kind and d['metadata']['name'].endswith(suffix))
+        assert 'replicas' not in workload['spec'], 'KEDA owns replicas'
+        scaled=next(d for d in docs if d['kind']=='ScaledObject')
+        assert scaled['spec']['scaleTargetRef']['name']==workload['metadata']['name']
+        assert scaled['spec']['minReplicaCount']>=1
+    kafka=render('exchange-kafka')
+    pool=next(d for d in kafka if d['kind']=='KafkaNodePool')
+    topic=next(d for d in kafka if d['kind']=='KafkaTopic')
+    assert pool['spec']['replicas']==3 and topic['spec']['replicas']==3
+    assert topic['spec']['partitions']==12 and topic['spec']['config']['min.insync.replicas']==2
+    assert pool['spec']['storage']['volumes'][0]['deleteClaim'] is False
+    app=yaml.safe_load((ROOT/'deploy/argocd/dummy-exchange-dev.yaml').read_text())
+    assert 'RespectIgnoreDifferences=true' in app['spec']['syncPolicy']['syncOptions']
+    assert {d['name'] for d in app['spec']['ignoreDifferences']} == {'dummy-exchange-dev-dummy-exchange-worker','dummy-exchange-dev-dummy-exchange-trader'}
     tunnel_app = yaml.safe_load((ROOT / 'deploy/argocd/tunnel-dev.yaml').read_text())
     tunnel_values = tunnel_app['spec']['source']['helm']['valuesObject']
     assert tunnel_values['enabled'] and tunnel_values['replicas'] == 2
     assert tunnel_app['spec']['destination']['namespace'] == 'ingress'
-    print('Five-chart profiles, ownership, migration ordering, secrets, storage and direct tunnel checks passed.')
+    print('Chart profiles, ownership, migrations, storage, Kafka replication, KEDA replica ownership and tunnel checks passed.')
     if not args.kubeconform:
         print('Kubernetes schema validation skipped: kubeconform is not installed.')
 

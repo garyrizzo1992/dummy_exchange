@@ -192,6 +192,49 @@
         "endpoint",
         "resources"
       ]
+    },
+    "kafka": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "bootstrapServers": {
+          "type": "string",
+          "minLength": 1
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "consumerGroup": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minReplicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxReplicas": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 12
+        },
+        "lagThreshold": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   },
   "additionalProperties": false

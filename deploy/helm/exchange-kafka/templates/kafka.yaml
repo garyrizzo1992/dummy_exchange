@@ -1,0 +1,97 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: brokers
+  labels:
+    strimzi.io/cluster: {{ .Values.clusterName }}
+spec:
+  replicas: 3
+  roles: [broker, controller]
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: {{ .Values.storageSize }}
+        class: {{ .Values.storageClass }}
+        deleteClaim: false
+        kraftMetadata: shared
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}
+  jvmOptions: {"-Xms": 512m, "-Xmx": 512m}
+  template:
+    pod:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      # Preferred spreading permits three brokers on the current two nodes.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {strimzi.io/cluster: {{ .Values.clusterName }}, strimzi.io/pool-name: brokers}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Values.clusterName }}
+spec:
+  kafka:
+    version: {{ .Values.kafkaVersion | quote }}
+    metadataVersion: {{ .Values.metadataVersion | quote }}
+    listeners:
+      - name: internal
+        port: 9092
+        type: internal
+        tls: false
+        networkPolicyPeers:
+          - podSelector:
+              matchLabels: {app.kubernetes.io/component: trader}
+          - podSelector:
+              matchLabels: {app.kubernetes.io/component: worker}
+          - namespaceSelector:
+              matchLabels: {kubernetes.io/metadata.name: keda}
+    config:
+      auto.create.topics.enable: false
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      log.retention.hours: 24
+      log.retention.bytes: 536870912
+    template:
+      podDisruptionBudget:
+        maxUnavailable: 1
+  entityOperator:
+    topicOperator:
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 384Mi}
+  kafkaExporter:
+    groupRegex: exchange-workers
+    topicRegex: 'exchange[.]order-commands'
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {cpu: 250m, memory: 128Mi}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: exchange-order-commands
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    strimzi.io/cluster: {{ .Values.clusterName }}
+spec:
+  topicName: {{ .Values.topic }}
+  partitions: {{ .Values.partitions }}
+  replicas: 3
+  config:
+    min.insync.replicas: 2
+    retention.ms: 86400000
+    retention.bytes: 536870912

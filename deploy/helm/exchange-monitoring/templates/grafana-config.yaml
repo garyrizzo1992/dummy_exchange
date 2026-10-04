@@ -74,6 +74,8 @@ metadata:
   labels:
     {{- include "exchange-monitoring.labels" . | nindent 4 }}
 data:
+  exchange-scaling.json: |
+    {{- .Files.Get "files/exchange-scaling.json" | nindent 4 }}
   {{- if .Values.tracing.enabled }}
   exchange-tracing.json: |
     {{- .Files.Get "files/exchange-tracing.json" | nindent 4 }}

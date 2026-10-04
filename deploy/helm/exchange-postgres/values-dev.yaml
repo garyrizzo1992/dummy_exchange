@@ -5,6 +5,3 @@ externalSecrets:
   secretName: dummy-exchange-dev-postgres-password
 persistence:
   storageClass: local-path
-redis:
-  persistence:
-    storageClass: local-path

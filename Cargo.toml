@@ -21,7 +21,7 @@ opentelemetry = "0.31"
 opentelemetry_sdk = "0.31"
 opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
 rand = "0.9"
-redis = { version = "0.32", features = ["tokio-comp"] }
+rdkafka = { version = "0.39", default-features = false, features = ["cmake-build", "tokio"] }
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 rust_decimal_macros = "1"
 serde = { version = "1", features = ["derive"] }

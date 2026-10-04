@@ -13,9 +13,8 @@ public node IP is required. OCI Bastion supplies SSH access to the private nodes
 | Argo CD | GitOps UI, REST API at `/api/v1`, CLI | `https://argocd.garyrizzo.dev` | Argo CD login / API token; CLI uses `--grpc-web` through Tunnel |
 | Prometheus | Query UI, `/api/v1` query and targets API | `https://prometheus.garyrizzo.dev` or localhost forwarding | Cloudflare Access email code for `1992rizzogary@gmail.com` |
 | PostgreSQL | SQL protocol; no bundled UI | Localhost forwarding, port 5432 | Existing database credentials |
-| Redis | Redis protocol; no bundled UI | Localhost forwarding, port 6379 | Private operator connection; no public route |
 | Worker / simulator | `/metrics`, `/healthz`; no management UI | Prometheus/Grafana, or localhost forwarding on 3001 / 3002 | Private operator connection |
-| PostgreSQL / Redis exporters | `/metrics`; no UI | Prometheus/Grafana, or localhost forwarding on 9187 / 9121 | Private operator connection |
+| PostgreSQL exporter | `/metrics`; no UI | Prometheus/Grafana, or localhost forwarding on 9187 | Private operator connection |
 | Kubernetes API | Cluster management API | `dev-kubectl.sh` through Bastion | OCI credentials, SSH key and controller kubeconfig |
 | External Secrets | Kubernetes CRDs and webhook; no operator UI | `kubectl get externalsecrets,secretstores -A` through `dev-kubectl.sh` | Kubernetes access |
 | Argo controllers, repo server, Dex, internal Redis | Internal Argo components | Argo CD UI/API or Kubernetes diagnostics | Argo CD / Kubernetes access |
@@ -86,9 +85,6 @@ bash provisioning/ansible/dev-forward.sh prometheus
 bash provisioning/ansible/dev-forward.sh postgres
 # psql -h 127.0.0.1 -p 5432 -U postgres -d dummy_exchange
 
-bash provisioning/ansible/dev-forward.sh redis
-# redis-cli -h 127.0.0.1 -p 6379 ping
-
 bash provisioning/ansible/dev-forward.sh api 13000
 # http://127.0.0.1:13000/readyz
 
@@ -99,8 +95,8 @@ bash provisioning/ansible/dev-forward.sh argocd
 # https://127.0.0.1:8443 (development origin uses a self-signed certificate)
 ```
 
-The forward helper also accepts `worker`, `simulator`, `postgres-exporter` and
-`redis-exporter`. The headless worker Service forwards to one worker pod; use
+The forward helper also accepts `worker`, `simulator` and `postgres-exporter`.
+The headless worker Service forwards to one worker pod; use
 Prometheus for metrics covering both replicas.
 
 Grafana uses username `admin` and the `grafana-admin-password` key in
