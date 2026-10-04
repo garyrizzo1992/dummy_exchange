@@ -42,6 +42,18 @@ try:
  assert float(mine['equity_usd'])==expected,(mine,expected)
  assert 'integration@example.com' not in json.dumps(board)
  assert board['accounts'][0]['rank']==1
+ assert board['system_liquidity'] is None
+ system='00000000-0000-0000-0000-000000000001'
+ sql("INSERT INTO users(id,email,password_hash) VALUES('"+system+"','market-maker@exchange.internal','disabled')")
+ sql("INSERT INTO accounts(user_id,currency,available) VALUES('"+system+"','USD',1000000000)")
+ separated=req('/v1/accounts/leaderboard')[1]
+ assert separated['system_liquidity']['label']=='System liquidity'
+ assert float(separated['system_liquidity']['equity_usd'])==1000000000
+ assert all(r['account_id']!=system for r in separated['accounts'])
+ assert separated['accounts'][0]['rank']==1 and separated['total']==board['total']
+ empty=req('/v1/accounts/leaderboard?offset=9999')[1]
+ assert empty['accounts']==[] and empty['total']==board['total'] and empty['system_liquidity']
+
  sql("INSERT INTO users(email,password_hash) SELECT 'leaderboard-test-'||n||'@example.com','disabled' FROM generate_series(1,101) n")
  first_page=req('/v1/accounts/leaderboard')[1];last_page=req('/v1/accounts/leaderboard?offset=100')[1]
  assert len(first_page['accounts'])==100 and first_page['has_more']

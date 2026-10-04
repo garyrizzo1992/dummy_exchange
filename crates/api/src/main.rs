@@ -348,7 +348,7 @@ async fn leaderboard(
     Query(page): Query<LeaderboardPage>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // One statement keeps the ranking, count and prices in a consistent snapshot.
-    let rows = sqlx::query(
+    let result = sqlx::query_scalar::<_, serde_json::Value>(
         "WITH prices AS (
             SELECT i.base_currency AS currency, s.reference_price AS price
             FROM instruments i JOIN market_state s ON s.instrument=i.symbol
@@ -362,32 +362,26 @@ async fn leaderboard(
             LEFT JOIN simulated_traders t ON t.user_id=u.id
             GROUP BY u.id,t.trader_key
         ), ranked AS (
-            SELECT *, ROW_NUMBER() OVER (ORDER BY equity DESC,id) AS rank,
-                   COUNT(*) OVER () AS total FROM totals
-        ) SELECT * FROM ranked ORDER BY rank LIMIT 101 OFFSET $1",
+            SELECT *, ROW_NUMBER() OVER (ORDER BY equity DESC,id) AS rank
+            FROM totals WHERE id <> '00000000-0000-0000-0000-000000000001'::uuid
+        ), page AS (
+            SELECT * FROM ranked ORDER BY rank LIMIT 101 OFFSET $1
+        ) SELECT jsonb_build_object(
+            'accounts', COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                'rank',rank,'account_id',id,'trader',trader_key,'equity_usd',equity::text
+            ) ORDER BY rank) FROM (SELECT * FROM page ORDER BY rank LIMIT 100) visible),'[]'::jsonb),
+            'total',(SELECT COUNT(*) FROM ranked),
+            'has_more',(SELECT COUNT(*) > 100 FROM page),
+            'system_liquidity',(SELECT jsonb_build_object(
+                'account_id',id,'label','System liquidity','equity_usd',equity::text
+            ) FROM totals WHERE id='00000000-0000-0000-0000-000000000001'::uuid)
+        )",
     )
     .bind(i64::from(page.offset))
-    .fetch_all(&app.db)
+    .fetch_one(&app.db)
     .await
     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let has_more = rows.len() > 100;
-    let accounts: Vec<_> = rows
-        .iter()
-        .take(100)
-        .map(|row| {
-            serde_json::json!({
-                "rank": row.get::<i64,_>("rank"),
-                "account_id": row.get::<Uuid,_>("id"),
-                "trader": row.get::<Option<String>,_>("trader_key"),
-                "equity_usd": row.get::<Decimal,_>("equity"),
-            })
-        })
-        .collect();
-    Ok(Json(serde_json::json!({
-        "accounts": accounts,
-        "total": rows.first().map(|r|r.get::<i64,_>("total")).unwrap_or(0),
-        "has_more": has_more,
-    })))
+    Ok(Json(result))
 }
 
 async fn balances(
