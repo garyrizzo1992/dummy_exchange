@@ -2,10 +2,14 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:e8b5723075c3ea7aa0efb60306fa3c9dffa37f55d040176f1e7a72b3ddffe5c7
+  digest: sha256:da3f65a96976b1af95d8cc0a3f061cf2d6adeb0174a3fc093d2f3d767ead9084
 tracing:
   enabled: true
 # Enabled atomically with the image that supports trader mode.
 traders:
   enabled: true
+  autoscaling:
+    enabled: true
 priceSource: coinbase
+kafka:
+  enabled: true
