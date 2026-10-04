@@ -1,9 +1,24 @@
 # Dummy Exchange
 
-Dummy Exchange is a Rust project for practising trading. Each account starts
+Dummy Exchange is a Rust project for practising trading. Registered accounts start
 with $100,000 in pretend dollars, which you can use to place orders for BTC,
-ETH and SOL. No real money changes hands, and it does not connect to an external
-exchange.
+ETH and SOL. Prices follow public Coinbase market data; orders, balances and
+settlement remain simulated. No real money changes hands.
+
+## Development URLs
+
+| Service | URL | Access |
+|---|---|---|
+| Exchange frontend | [api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) | Public market view; create an account or sign in to trade. |
+| Exchange REST API | [api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) | Public market endpoints; account and order endpoints require a Bearer JWT from `/v1/auth/register` or `/v1/auth/login`. |
+| Grafana | [grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) | Grafana login; dashboards, metrics, pod logs and traces. |
+| Argo CD | [argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) | Argo CD login; deployment and sync status. |
+| Prometheus | [prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) | Cloudflare Access email-code login for allowed operators. |
+
+These hostnames use Cloudflare Tunnel to reach private Kubernetes services.
+PostgreSQL, Redis, the Kubernetes API and application health/metrics endpoints
+remain private. See [development access](provisioning/terraform/docs/dev-access.md)
+for authentication and private forwarding instructions.
 
 ## Deployment
 
