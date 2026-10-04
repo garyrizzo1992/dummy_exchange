@@ -184,9 +184,9 @@ pub fn App() -> impl IntoView {
         </div></header>
         <div class="notice">"Demo exchange | All balances and orders are simulated. No deposits or real money."</div>
         <main class="layout">
-            <section class="panel market"><div class="market-head"><h2>"Spot market"</h2><select prop:value=move ||market.get() on:change=move |ev| {market.set(event_target_value(&ev));price.set(String::new());snapshot.update(|s|{s.trades.clear();s.book=Value::Null;});}>
+            <section class="panel market"><div class="market-head"><h2>"Spot market"</h2><select prop:value=move ||market.get() on:change=move |ev| {market.set(event_target_value(&ev));price.set(String::new());connected.set(false);snapshot.update(|s|{s.trades.clear();s.book=Value::Null;s.ticker=Value::Null;});}>
                 <option value="BTC-USD">"BTC / USD"</option><option value="ETH-USD">"ETH / USD"</option><option value="SOL-USD">"SOL / USD"</option></select></div>
-                <div class="price">"$"{move ||money(&snapshot.get().ticker["price"])}</div>
+                <div class="price">{move ||if snapshot.get().ticker.is_null() {"Loading price...".to_owned()}else{format!("${}",money(&snapshot.get().ticker["price"]))}}</div>
                 <div class="status">{move || if connected.get() {"Live | Refreshing every 2 seconds"} else {"Reconnecting to exchange..."}}</div>
                 <svg class="chart" viewBox="0 0 700 230" preserveAspectRatio="none" role="img" aria-label="Recent trade price chart">
                     <line x1="0" y1="50" x2="700" y2="50"/><line x1="0" y1="115" x2="700" y2="115"/><line x1="0" y1="180" x2="700" y2="180"/>
@@ -199,7 +199,7 @@ pub fn App() -> impl IntoView {
             <section class="panel ticket"><h2>"Place an order"</h2><div class="row tabs"><button class:selected=move ||side.get()=="buy" on:click=move |_|side.set("buy".into())>"Buy"</button><button class:selected=move ||side.get()=="sell" on:click=move |_|side.set("sell".into())>"Sell"</button></div>
                 <label>"Order type"<select on:change=move |ev|kind.set(event_target_value(&ev))><option value="limit">"Limit"</option><option value="market">"Market"</option></select></label>
                 <label>"Quantity"<input type="number" min="0.0000000001" step="any" prop:value=move ||quantity.get() on:input=move |ev|quantity.set(event_target_value(&ev))/></label>
-                <Show when=move ||kind.get()=="limit"><label>"Limit price (USD)"<input type="number" min="0.01" step="0.01" placeholder="Price" prop:value=move ||price.get() on:input=move |ev|price.set(event_target_value(&ev))/></label><button on:click=move |_|price.set(money(&snapshot.get().ticker["price"]))>"Use market price"</button></Show>
+                <Show when=move ||kind.get()=="limit"><label>"Limit price (USD)"<input type="number" min="0.01" step="0.01" placeholder="Price" prop:value=move ||price.get() on:input=move |ev|price.set(event_target_value(&ev))/></label><button disabled=move ||snapshot.get().ticker.is_null() on:click=move |_|price.set(money(&snapshot.get().ticker["price"]))>"Use market price"</button></Show>
                 <button class="primary" disabled=move ||token.get().is_empty()||busy.get() on:click=submit>{move ||if busy.get(){"Processing..."}else if token.get().is_empty(){"Sign in to trade"}else{"Submit order"}}</button>
                 <p class="error" role="alert">{move ||error.get()}</p><p class="success" role="status">{move ||message.get()}</p>
             </section>

@@ -9,3 +9,5 @@ Traders place random buys/sells through the same acceptance code as human accoun
 Configure `traders.replicas`, `traders.intervalMs` and `simulationSeed` in the exchange chart. The replica count has no artificial upper bound; actual throughput is bounded by node resources, database connections and matching capacity. Each trader uses one persistent database connection, and additional matching pods help distribute instruments rather than match one instrument concurrently.
 
 Application pods include a resource-limited OpenTelemetry Collector sidecar when `tracing.enabled` is true. It accepts OTLP only on the pod loopback interface and exports to private Tempo. W3C context is saved on accepted orders and continued by settlement spans in matching workers. Grafana provisions the Tempo datasource, an Exchange Tracing dashboard, and Loki-to-trace links. Tempo retains local trace data for 72 hours on a PVC, appropriate for this development cluster.
+
+Trader updates run in Argo CD sync wave 1, after the API and matching Deployments are healthy. Initial simulation-only legacy-matcher corrections are preserved in audit_log.

@@ -101,6 +101,10 @@ def main():
             assert workloads[component]['spec']['strategy']['type'] == 'Recreate'
         assert workloads['simulator']['spec']['replicas'] == 1
         assert workloads['worker']['spec']['replicas'] == 2
+        if 'trader' in workloads:
+            assert workloads['trader']['metadata']['annotations']['argocd.argoproj.io/sync-wave'] == '1'
+            assert workloads['trader']['spec']['podManagementPolicy'] == 'Parallel'
+            assert not workloads['trader']['spec'].get('volumeClaimTemplates')
         job = workloads['migration']
         assert job['metadata']['name'] == f'{prefix}-migrate'
         assert job['metadata']['annotations']['argocd.argoproj.io/hook'] == 'Sync'
