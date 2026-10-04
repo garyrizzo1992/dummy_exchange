@@ -6,3 +6,6 @@ mod browser;
 fn main() {
     leptos::mount::mount_to_body(browser::App);
 }
+
+#[cfg(any(target_arch = "wasm32", test))]
+mod sizing;

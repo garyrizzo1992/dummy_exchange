@@ -171,6 +171,65 @@ pub fn App() -> impl IntoView {
             busy.set(false);
         });
     };
+    let sized_quantity = move |percent| {
+        let current = snapshot.get();
+        let buy = side.get() == "buy";
+        let selected = market.get();
+        let currency = if buy {
+            "USD"
+        } else {
+            selected.split('-').next().unwrap_or("")
+        };
+        let available = current
+            .balances
+            .iter()
+            .find(|b| b["currency"] == currency)?;
+        let available = available["available"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| available["available"].to_string());
+        let reference = current.ticker["price"]
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| current.ticker["price"].to_string());
+        crate::sizing::quantity(
+            &available,
+            &price.get(),
+            &reference,
+            buy,
+            kind.get() == "market",
+            percent,
+        )
+    };
+    let cancel_all = move |_| {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        auth_error.set(String::new());
+        auth_message.set(String::new());
+        let auth = token.get_untracked();
+        spawn_local(async move {
+            match api("/v1/orders/cancel-all", &auth, Some(json!({}))).await {
+                Ok(value) => {
+                    auth_message.set(format!(
+                        "{} orders cancelled. Reserved funds released.",
+                        value["cancelled"]
+                    ));
+                    if let Ok(balances) = api("/v1/accounts/balances", &auth, None).await
+                        && token.get_untracked() == auth
+                    {
+                        snapshot.update(|s| {
+                            s.balances = array(balances);
+                            s.orders.clear();
+                        });
+                    }
+                }
+                Err(e) => auth_error.set(e),
+            }
+            busy.set(false);
+        });
+    };
     let submit = move |_| {
         if busy.get_untracked() {
             return;
@@ -224,6 +283,9 @@ pub fn App() -> impl IntoView {
             <section class="panel ticket"><h2>"Place an order"</h2><div class="row tabs"><button class:selected=move ||side.get()=="buy" on:click=move |_|side.set("buy".into())>"Buy"</button><button class:selected=move ||side.get()=="sell" on:click=move |_|side.set("sell".into())>"Sell"</button></div>
                 <label>"Order type"<select on:change=move |ev|kind.set(event_target_value(&ev))><option value="limit">"Limit"</option><option value="market">"Market"</option></select></label>
                 <label>"Quantity"<input type="number" min="0.0000000001" step="any" prop:value=move ||quantity.get() on:input=move |ev|quantity.set(event_target_value(&ev))/></label>
+                <div class="row quantity-shortcuts">{[25u32,50,75,100].into_iter().map(move |percent|view!{
+                    <button type="button" disabled=move ||token.get().is_empty()||busy.get()||snapshot.get().ticker["fresh"]==false||sized_quantity(percent).is_none() on:click=move |_|{if let Some(value)=sized_quantity(percent){quantity.set(value);}}>{if percent==100{"All".to_owned()}else{format!("{percent}%")}}</button>
+                }).collect_view()}</div><p class="muted">"Uses available balance. Market buys include the 5% price allowance."</p>
                 <Show when=move ||kind.get()=="limit"><label>"Limit price (USD)"<input type="number" min="0.01" step="0.01" placeholder="Price" prop:value=move ||price.get() on:input=move |ev|price.set(event_target_value(&ev))/></label><button disabled=move ||snapshot.get().ticker.is_null() on:click=move |_|price.set(money(&snapshot.get().ticker["price"]))>"Use market price"</button></Show>
                 <button class="primary" disabled=move ||token.get().is_empty()||busy.get()||snapshot.get().ticker["fresh"]==false on:click=submit>{move ||if busy.get(){"Processing..."}else if token.get().is_empty(){"Sign in to trade"}else{"Submit order"}}</button>
                 <p class="error" role="alert">{move ||error.get()}</p><p class="success" role="status">{move ||message.get()}</p>
@@ -250,7 +312,7 @@ pub fn App() -> impl IntoView {
             </section>
             <section class="panel account"><h2>"Your account"</h2>
                 <p class="error" role="alert">{move ||auth_error.get()}</p><p class="success" role="status">{move ||auth_message.get()}</p>
-                <Show when=move ||token.get().is_empty() fallback=move ||view!{<div class="account-grid"><div><h3>"Balances"</h3><table><thead><tr><th>"Asset"</th><th>"Available"</th><th>"Reserved"</th></tr></thead><tbody>{move ||snapshot.get().balances.into_iter().map(|v|view!{<tr><td>{text(&v["currency"])}</td><td>{format!("{:.6}",number(&v["available"]))}</td><td>{format!("{:.6}",number(&v["reserved"]))}</td></tr>}).collect_view()}</tbody></table></div><div><h3>"Open orders"</h3><table><thead><tr><th>"Market / Side"</th><th>"Remaining"</th><th>"Price"</th><th>"Action"</th></tr></thead><tbody>{move ||snapshot.get().orders.into_iter().map(|v|{let id=text(&v["id"]);view!{<tr><td>{format!("{} | {}",text(&v["instrument"]),text(&v["side"]))}</td><td>{format!("{:.6}",number(&v["remaining"]))}</td><td>{money(&v["limit_price"])}</td><td><button class="cancel" on:click=move |_|{let id=id.clone();spawn_local(async move{match api(&format!("/v1/orders/{id}/cancel"),&token.get_untracked(),Some(json!({}))).await{Ok(_)=>message.set("Order cancelled.".into()),Err(e)=>error.set(e)}});}>"Cancel"</button></td></tr>}}).collect_view()}</tbody></table><h3>"Recent fills"</h3><table><tbody>{move ||snapshot.get().fills.into_iter().take(10).map(|v|view!{<tr><td>{text(&v["instrument"])}</td><td>{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td></tr>}).collect_view()}</tbody></table></div></div>}>
+                <Show when=move ||token.get().is_empty() fallback=move ||view!{<div class="account-grid"><div><h3>"Balances"</h3><table><thead><tr><th>"Asset"</th><th>"Available"</th><th>"Reserved"</th></tr></thead><tbody>{move ||snapshot.get().balances.into_iter().map(|v|view!{<tr><td>{text(&v["currency"])}</td><td>{format!("{:.6}",number(&v["available"]))}</td><td>{format!("{:.6}",number(&v["reserved"]))}</td></tr>}).collect_view()}</tbody></table></div><div><div class="row order-actions"><h3>"Open orders"</h3><button type="button" disabled=move ||busy.get()||snapshot.get().orders.is_empty() on:click=cancel_all>"Cancel all orders"</button></div><table><thead><tr><th>"Market / Side"</th><th>"Remaining"</th><th>"Price"</th><th>"Action"</th></tr></thead><tbody>{move ||snapshot.get().orders.into_iter().map(|v|{let id=text(&v["id"]);view!{<tr><td>{format!("{} | {}",text(&v["instrument"]),text(&v["side"]))}</td><td>{format!("{:.6}",number(&v["remaining"]))}</td><td>{money(&v["limit_price"])}</td><td><button class="cancel" on:click=move |_|{let id=id.clone();spawn_local(async move{match api(&format!("/v1/orders/{id}/cancel"),&token.get_untracked(),Some(json!({}))).await{Ok(_)=>message.set("Order cancelled.".into()),Err(e)=>error.set(e)}});}>"Cancel"</button></td></tr>}}).collect_view()}</tbody></table><h3>"Recent fills"</h3><table><tbody>{move ||snapshot.get().fills.into_iter().take(10).map(|v|view!{<tr><td>{text(&v["instrument"])}</td><td>{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td></tr>}).collect_view()}</tbody></table></div></div>}>
                     <form class="auth" on:submit=move |ev|{ev.prevent_default();authenticate(false);}>
                         <p class="muted">"Create a demo account with $100,000 in simulated USD."</p><label>"Email"<input type="email" autocomplete="username" required prop:value=move ||email.get() on:input=move |ev|email.set(event_target_value(&ev))/></label>
                         <label>"Password"<input type="password" autocomplete="current-password" placeholder="At least 12 characters to create an account" required maxlength="128" prop:value=move ||password.get() on:input=move |ev|password.set(event_target_value(&ev))/></label>

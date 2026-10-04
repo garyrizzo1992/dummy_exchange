@@ -92,6 +92,24 @@ try:
  assert first[0]==201 and second[0]==200 and first[1]['id']==second[1]['id'],(first,second)
  assert req('/v1/orders/'+first[1]['id']+'/cancel',{},token)[0]==200
  assert req('/v1/accounts/balances',token=token)[1]==before
+ # Bulk cancellation releases both quote and base reservations, only for the owner.
+ sql("UPDATE accounts SET available=1 WHERE user_id='"+uid+"' AND currency='ETH'")
+ funded=req('/v1/accounts/balances',token=token)[1]
+ other=req('/v1/auth/register',{'email':'other-owner@example.com','password':'integration-password-123'})[1]['access_token']
+ buy=dict(valid,client_order_id='bulk-buy')
+ sell=dict(valid,client_order_id='bulk-sell',instrument='ETH-USD',side='sell',quantity='0.1',limit_price='1000000')
+ assert req('/v1/orders',buy,token)[0]==201
+ assert req('/v1/orders',sell,token)[0]==201
+ foreign=req('/v1/orders',dict(valid,client_order_id='foreign-order'),other)[1]['id']
+ assert req('/v1/orders/cancel-all',{})[0]==401
+ assert len(req('/v1/orders',token=token)[1])==2
+ assert req('/v1/orders/cancel-all',{},token)[1]['cancelled']==2
+ assert req('/v1/orders',token=token)[1]==[]
+ assert req('/v1/accounts/balances',token=token)[1]==funded
+ assert req('/v1/orders',token=other)[1][0]['id']==foreign
+ assert req('/v1/orders/cancel-all',{},token)[1]['cancelled']==0
+ assert req('/v1/orders/cancel-all',{},other)[1]['cancelled']==1
+ sql("UPDATE accounts SET available=0 WHERE user_id='"+uid+"' AND currency='ETH'")
  for _ in range(10): req('/v1/auth/login',{'email':'missing@example.com','password':'incorrect'})
  assert req('/v1/auth/login',{'email':'missing@example.com','password':'incorrect'})[0]==429
  large=urllib.request.Request('http://127.0.0.1:23000/v1/orders',data=b'x'*17000,headers={'Content-Type':'application/json'})

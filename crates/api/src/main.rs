@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/auth/login", post(login))
         .route("/v1/orders", post(place_order))
         .route("/v1/orders/{id}/cancel", post(cancel_order))
+        .route("/v1/orders/cancel-all", post(cancel_all_orders))
         .route("/v1/orders", get(open_orders))
         .route("/v1/accounts/balances", get(balances))
         .route("/v1/accounts/leaderboard", get(leaderboard))
@@ -301,6 +302,22 @@ async fn cancel_order(
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     exchange_trading::cancel_order(&mut connection, user, id)
+        .await
+        .map(Json)
+        .map_err(trading_status)
+}
+
+async fn cancel_all_orders(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user = authenticated_user(&headers, &app)?;
+    let mut connection = app
+        .db
+        .acquire()
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    exchange_trading::cancel_all_orders(&mut connection, user)
         .await
         .map(Json)
         .map_err(trading_status)

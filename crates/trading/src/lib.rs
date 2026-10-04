@@ -181,57 +181,82 @@ pub async fn cancel_order(
     user_id: Uuid,
     id: Uuid,
 ) -> Result<serde_json::Value, TradingError> {
+    cancel_orders(connection, user_id, Some(id))
+        .await?
+        .pop()
+        .ok_or(TradingError::NotFound)
+}
+
+#[tracing::instrument(skip_all, fields(user_id=%user_id))]
+pub async fn cancel_all_orders(
+    connection: &mut PgConnection,
+    user_id: Uuid,
+) -> Result<serde_json::Value, TradingError> {
+    let orders = cancel_orders(connection, user_id, None).await?;
+    Ok(serde_json::json!({"cancelled":orders.len(),"orders":orders}))
+}
+
+async fn cancel_orders(
+    connection: &mut PgConnection,
+    user_id: Uuid,
+    id: Option<Uuid>,
+) -> Result<Vec<serde_json::Value>, TradingError> {
     let mut tx = connection
         .begin()
         .await
         .map_err(|_| TradingError::Unavailable)?;
-    let order = sqlx::query(
-        "SELECT instrument,side,remaining,limit_price
-         FROM orders
-         WHERE id=$1 AND user_id=$2 AND status IN ('open','partially_filled')
-         FOR UPDATE",
-    )
-    .bind(id)
-    .bind(user_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(|_| TradingError::Unavailable)?
-    .ok_or(TradingError::NotFound)?;
-    let symbol: String = order.get("instrument");
-    let side: String = order.get("side");
-    let remaining: Decimal = order.get("remaining");
-    let price: Decimal = order.get("limit_price");
-    let currency = if side == "buy" {
-        symbol.split('-').nth(1).unwrap()
-    } else {
-        symbol.split('-').next().unwrap()
-    };
-    let release = if side == "buy" {
-        remaining * price
-    } else {
-        remaining
-    };
-    sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
-        .bind(id)
+    // Serialize with order placement, and lock remaining quantities against settlement.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("order-user:{user_id}"))
         .execute(&mut *tx)
         .await
         .map_err(|_| TradingError::Unavailable)?;
-    sqlx::query("UPDATE accounts SET available=available+$1,reserved=reserved-$1 WHERE user_id=$2 AND currency=$3")
-        .bind(release)
-        .bind(user_id)
-        .bind(currency)
-        .execute(&mut *tx)
-        .await
-        .map_err(|_|TradingError::Unavailable)?;
-    tx.commit().await.map_err(|_| TradingError::Unavailable)?;
-    metrics::counter!(
-        "orders_cancelled_total",
-        "instrument" => symbol,
-        "side" => side
+    let orders = sqlx::query(
+        "SELECT id,instrument,side,remaining,limit_price FROM orders
+        WHERE user_id=$1 AND ($2::uuid IS NULL OR id=$2) AND status IN ('open','partially_filled')
+        ORDER BY sequence FOR UPDATE",
     )
-    .increment(1);
-    Ok(serde_json::json!({
-        "id": id,
-        "status": "cancelled"
-    }))
+    .bind(user_id)
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|_| TradingError::Unavailable)?;
+    if id.is_some() && orders.is_empty() {
+        return Err(TradingError::NotFound);
+    }
+    let mut result = Vec::new();
+    let mut labels = Vec::new();
+    for order in orders {
+        let id: Uuid = order.get("id");
+        let symbol: String = order.get("instrument");
+        let side: String = order.get("side");
+        let remaining: Decimal = order.get("remaining");
+        let price: Decimal = order.get("limit_price");
+        let currency = if side == "buy" {
+            symbol.split('-').nth(1).unwrap()
+        } else {
+            symbol.split('-').next().unwrap()
+        };
+        let release = if side == "buy" {
+            remaining
+                .checked_mul(price)
+                .ok_or(TradingError::Unavailable)?
+        } else {
+            remaining
+        };
+        sqlx::query("UPDATE orders SET status='cancelled' WHERE id=$1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| TradingError::Unavailable)?;
+        sqlx::query("UPDATE accounts SET available=available+$1,reserved=reserved-$1 WHERE user_id=$2 AND currency=$3")
+            .bind(release).bind(user_id).bind(currency).execute(&mut *tx).await.map_err(|_|TradingError::Unavailable)?;
+        result.push(serde_json::json!({"id":id,"status":"cancelled"}));
+        labels.push((symbol, side));
+    }
+    tx.commit().await.map_err(|_| TradingError::Unavailable)?;
+    for (symbol, side) in labels {
+        metrics::counter!("orders_cancelled_total","instrument"=>symbol,"side"=>side).increment(1);
+    }
+    Ok(result)
 }
