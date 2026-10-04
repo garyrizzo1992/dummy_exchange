@@ -220,6 +220,10 @@ JWT key rotation would need support for validating tokens signed with the previo
 
 ## Start with Docker
 
+For native Rust builds on WSL/Linux, Kafka support requires CMake and libcurl
+headers: `sudo apt-get install cmake libcurl4-openssl-dev`. Docker builds install
+these dependencies automatically.
+
 With Docker and Compose installed, run these commands from the project folder:
 
 ```powershell

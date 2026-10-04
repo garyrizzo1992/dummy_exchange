@@ -1,0 +1,10 @@
+# Strimzi deploys the exporter pod; this chart provides its private scrape Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.clusterName }}-kafka-exporter
+spec:
+  selector:
+    strimzi.io/name: {{ .Values.clusterName }}-kafka-exporter
+  ports:
+    - {name: metrics, port: 9404, targetPort: tcp-prometheus}
