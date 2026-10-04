@@ -94,4 +94,7 @@ spec:
   config:
     min.insync.replicas: 2
     retention.ms: 86400000
-    retention.bytes: 536870912
+    # Per-partition limits: 12 x 128Mi stays within each broker's 5Gi volume.
+    retention.bytes: 134217728
+    segment.bytes: 16777216
+    segment.ms: 3600000

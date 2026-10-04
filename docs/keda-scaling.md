@@ -2,7 +2,8 @@
 
 Development uses three Strimzi-managed Kafka 4.3.1 brokers, each also a KRaft
 controller. Each broker has a persistent 5 GiB volume. The command topic has 12
-partitions, replication factor 3, minimum ISR 2 and 24-hour retention. Producers
+partitions, replication factor 3, minimum ISR 2 and 24-hour retention, bounded to
+128 MiB per partition with 16 MiB segments to fit the 5 GiB broker volumes. Producers
 wait for all in-sync replicas. ZooKeeper is not required.
 
 ```mermaid
