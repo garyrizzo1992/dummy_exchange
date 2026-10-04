@@ -2,7 +2,7 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:40e651d2ccf6a80ef89f602525b395640933f6d5e0b21af384fe6d001ec7e5be
+  digest: sha256:9c091e487501b8c9fdb5eda18fb7c04729f13685908836db43c4ed75b1a80322
 externalSecrets:
   enabled: true
   vaultId: ocid1.vault.oc1.eu-milan-1.hjvl5nnyaadq2.abwgsljrhqsvxa5k42ihwackhwkndppsmgeakyk2gzdi6j2i7d462npsxlmq
