@@ -60,7 +60,7 @@
     },
     {
       "id": 3,
-      "title": "Orders placed by traders / second",
+      "title": "Accepted orders / second",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -75,7 +75,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (instrument) (rate(simulation_orders_placed_total[5m]))",
+          "expr": "sum by (instrument) (rate(orders_accepted_total[5m]))",
           "legendFormat": "{{instrument}}"
         }
       ]
