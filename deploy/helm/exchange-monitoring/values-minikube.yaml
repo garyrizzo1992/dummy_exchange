@@ -9,3 +9,7 @@ grafana:
     type: NodePort
     port: 3000
     nodePort: 30001
+
+tracing:
+  persistence:
+    storageClass: standard

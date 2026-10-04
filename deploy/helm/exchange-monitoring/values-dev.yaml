@@ -15,3 +15,7 @@ grafana:
 logging:
   persistence:
     storageClass: local-path
+
+tracing:
+  persistence:
+    storageClass: local-path

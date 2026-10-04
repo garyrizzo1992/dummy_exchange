@@ -45,6 +45,8 @@ data:
         jsonData:
           tracesToLogsV2:
             datasourceUid: loki
+            tags:
+              - {key: service.name, value: service}
             spanStartTimeShift: '-1m'
             spanEndTimeShift: '1m'
             filterByTraceID: false
