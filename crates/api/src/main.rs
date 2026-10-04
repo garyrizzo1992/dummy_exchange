@@ -393,7 +393,10 @@ async fn leaderboard(
                 'rank',rank,'account_id',id,'trader',trader_key,'equity_usd',equity::text,
                 'profit_usd',profit_usd::text,'profit_percent',profit_percent::text,
                 'initial_equity_usd',initial_equity_usd::text,
-                'tracking_started_at',profit_tracking_started_at
+                'tracking_started_at',profit_tracking_started_at,
+                'trade_count',(SELECT COUNT(DISTINCT f.id) FROM fills f
+                    JOIN orders o ON o.id IN (f.maker_order_id,f.taker_order_id)
+                    WHERE o.user_id=visible.id)
             ) ORDER BY rank) FROM (SELECT * FROM page ORDER BY rank LIMIT 100) visible),'[]'::jsonb),
             'total',(SELECT COUNT(*) FROM ranked),
             'has_more',(SELECT COUNT(*) > 100 FROM page),

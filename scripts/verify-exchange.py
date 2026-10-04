@@ -138,6 +138,13 @@ try:
  assert 'already has an active owner' in Path(__import__("tempfile").gettempdir(),'exchange-test-2.log').read_text()
  baseline=sql("SELECT available+reserved FROM accounts WHERE user_id='"+uid+"' AND currency='USD'")
  trader.terminate();trader.wait();duplicate.terminate();duplicate.wait()
+ # No matcher is running yet: reconstruct free funds before each order and
+ # verify the actual reservations stay within the 1%-10% sizing budget.
+ amounts = json.loads(sql("WITH sized AS (SELECT o.sequence,CASE WHEN o.side='buy' THEN i.quote_currency ELSE i.base_currency END AS currency,round(o.quantity*CASE WHEN o.side='buy' THEN o.limit_price ELSE 1 END,10) AS cost FROM orders o JOIN instruments i ON i.symbol=o.instrument WHERE o.user_id='"+uid+"'), budgets AS (SELECT *,COALESCE(sum(cost) OVER (PARTITION BY currency ORDER BY sequence ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS previous FROM sized) SELECT COALESCE(jsonb_agg(jsonb_build_object('cost',cost,'free',CASE currency WHEN 'USD' THEN 100000 WHEN 'BTC' THEN 1 WHEN 'ETH' THEN 10 WHEN 'SOL' THEN 100 END-previous)),'[]') FROM budgets"))
+ assert amounts, 'Trader must produce orders'
+ for amount in amounts:
+  fraction = amount['cost'] / amount['free']
+  assert .00999 <= fraction <= .100001, amount
  restarted=start('exchange-simulator'+suffix,{'TRADER_ID':'integration-trader-0','SIMULATOR_METRICS_BIND':'127.0.0.1:23003','TRADER_INTERVAL_MS':'500'},('trader',))
  time.sleep(1)
  assert sql("SELECT user_id FROM simulated_traders WHERE trader_key='integration-trader-0'")==uid
@@ -148,6 +155,13 @@ try:
  simulator=start('exchange-simulator'+suffix,{'SIMULATOR_METRICS_BIND':'127.0.0.1:23002'})
  time.sleep(5)
  assert int(sql("SELECT count(*) FROM fills f JOIN orders o ON o.id=f.taker_order_id OR o.id=f.maker_order_id WHERE o.user_id='"+uid+"'"))>0
+ status, board, _ = req('/v1/accounts/leaderboard')
+ assert status == 200
+ if not any(account['account_id'] == uid for account in board['accounts']):
+  board['accounts'].extend(req('/v1/accounts/leaderboard?offset=100')[1]['accounts'])
+ entry = next(account for account in board['accounts'] if account['account_id'] == uid)
+ actual = int(sql("SELECT count(DISTINCT f.id) FROM fills f JOIN orders o ON o.id IN (f.maker_order_id,f.taker_order_id) WHERE o.user_id='"+uid+"'"))
+ assert 0 < entry['trade_count'] <= actual, (entry, actual)
  assert sql("SELECT count(*) FROM accounts WHERE available < 0 OR reserved < 0")=='0'
  assert sql("SELECT count(*) FROM orders WHERE user_id='"+uid+"' AND is_system")=='0'
  assert sql("SELECT count(*) FROM fills WHERE price<=0 OR quantity<=0")=='0'

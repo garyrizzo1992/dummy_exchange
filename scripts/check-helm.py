@@ -82,7 +82,7 @@ def main():
                             'app.kubernetes.io/component': component,
                         }
                         assert doc['metadata']['name'] == f'{prefix}-{component}'
-                    if chart in BUSINESS:
+                    if chart in BUSINESS and component != 'load-controller':
                         env = doc['spec']['template']['spec']['containers'][0]['env']
                         assert next(e['value'] for e in env if e['name'] == 'PGHOST') == f'{prefix}-postgres'
                         assert not any(e['name'] in ('DATABASE_URL', 'REDIS_URL') for e in env)
@@ -96,11 +96,19 @@ def main():
             if chart == "exchange" and profile:
                 trader_enabled = yaml.safe_load((CHARTS/chart/f"values-{profile}.yaml").read_text()).get("traders",{}).get("enabled",True)
             expected_components = expected[chart] - ({"trader"} if chart == "exchange" and not trader_enabled else set())
+            if chart == 'exchange' and profile:
+                trader_scaling = yaml.safe_load((CHARTS/chart/f'values-{profile}.yaml').read_text()).get('traders',{}).get('autoscaling',{}).get('enabled',False)
+                if trader_enabled and trader_scaling:
+                    expected_components |= {'load-controller'}
             assert components == expected_components, (chart, components)
         for component in ('simulator', 'prometheus'):
             assert workloads[component]['spec']['strategy']['type'] == 'Recreate'
         assert workloads['simulator']['spec']['replicas'] == 1
-        assert workloads['worker']['spec']['replicas'] == 2
+        worker_scaling = bool(profile and yaml.safe_load((CHARTS/'exchange-worker'/f'values-{profile}.yaml').read_text()).get('autoscaling',{}).get('enabled',False))
+        if worker_scaling:
+            assert 'replicas' not in workloads['worker']['spec']
+        else:
+            assert workloads['worker']['spec']['replicas'] == 2
         if 'trader' in workloads:
             assert workloads['trader']['metadata']['annotations']['argocd.argoproj.io/sync-wave'] == '1'
             assert workloads['trader']['spec']['podManagementPolicy'] == 'Parallel'

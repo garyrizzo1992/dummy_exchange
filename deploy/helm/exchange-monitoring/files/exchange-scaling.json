@@ -4,13 +4,160 @@
   "schemaVersion": 40,
   "version": 1,
   "refresh": "15s",
-  "time": {"from": "now-30m", "to": "now"},
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
-    {"id":1,"type":"timeseries","title":"Kafka consumer lag","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(kafka_consumergroup_lag{consumergroup=\"exchange-workers\",topic=\"exchange.order-commands\"})","legendFormat":"Pending commands"}],"gridPos":{"x":0,"y":0,"w":12,"h":8}},
-    {"id":2,"type":"timeseries","title":"Worker replicas","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"kube_deployment_status_replicas_available{namespace=\"dummy-exchange\",deployment=\"dummy-exchange-dev-dummy-exchange-worker\"}","legendFormat":"Ready"},{"expr":"kube_deployment_spec_replicas{namespace=\"dummy-exchange\",deployment=\"dummy-exchange-dev-dummy-exchange-worker\"}","legendFormat":"Desired"}],"gridPos":{"x":12,"y":0,"w":12,"h":8}},
-    {"id":3,"type":"timeseries","title":"Random trader target and live replicas","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"max(simulation_target_traders{job=\"trader-load\"})","legendFormat":"Random target"},{"expr":"kube_statefulset_replicas{namespace=\"dummy-exchange\",statefulset=\"dummy-exchange-dev-dummy-exchange-trader\"}","legendFormat":"Desired"},{"expr":"kube_statefulset_status_replicas_ready{namespace=\"dummy-exchange\",statefulset=\"dummy-exchange-dev-dummy-exchange-trader\"}","legendFormat":"Ready"}],"gridPos":{"x":0,"y":8,"w":12,"h":8}},
-    {"id":4,"type":"timeseries","title":"Kafka commands per second","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(rate(simulation_commands_published_total[$__rate_interval]))","legendFormat":"Published"},{"expr":"sum(rate(kafka_commands_processed_total[$__rate_interval]))","legendFormat":"Processed"},{"expr":"sum(rate(kafka_commands_rejected_total[$__rate_interval]))","legendFormat":"Rejected"}],"gridPos":{"x":12,"y":8,"w":12,"h":8}},
-    {"id":5,"type":"timeseries","title":"Kafka consumer failures","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum(rate(kafka_consumer_restarts_total[$__rate_interval]))","legendFormat":"Restarts"},{"expr":"sum(rate(kafka_command_errors_total[$__rate_interval]))","legendFormat":"Errors"}],"gridPos":{"x":0,"y":16,"w":12,"h":8}},
-    {"id":6,"type":"timeseries","title":"Partition lag","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"kafka_consumergroup_lag{consumergroup=\"exchange-workers\",topic=\"exchange.order-commands\"}","legendFormat":"Partition {{partition}}"}],"gridPos":{"x":12,"y":16,"w":12,"h":8}}
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Kafka consumer lag",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(clamp_min(kafka_consumergroup_lag{consumergroup=\"exchange-workers\",topic=\"exchange.order-commands\"},0))",
+          "legendFormat": "Pending commands"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Worker replicas",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "kube_deployment_status_replicas_available{namespace=\"dummy-exchange\",deployment=\"dummy-exchange-dev-dummy-exchange-worker\"}",
+          "legendFormat": "Ready"
+        },
+        {
+          "expr": "kube_deployment_spec_replicas{namespace=\"dummy-exchange\",deployment=\"dummy-exchange-dev-dummy-exchange-worker\"}",
+          "legendFormat": "Desired"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Random trader target and live replicas",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(simulation_target_traders{job=\"trader-load\"})",
+          "legendFormat": "Random target"
+        },
+        {
+          "expr": "kube_statefulset_replicas{namespace=\"dummy-exchange\",statefulset=\"dummy-exchange-dev-dummy-exchange-trader\"}",
+          "legendFormat": "Desired"
+        },
+        {
+          "expr": "kube_statefulset_status_replicas_ready{namespace=\"dummy-exchange\",statefulset=\"dummy-exchange-dev-dummy-exchange-trader\"}",
+          "legendFormat": "Ready"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Kafka commands per second",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(simulation_commands_published_total[$__rate_interval]))",
+          "legendFormat": "Published"
+        },
+        {
+          "expr": "sum(rate(kafka_commands_processed_total[$__rate_interval]))",
+          "legendFormat": "Processed"
+        },
+        {
+          "expr": "sum(rate(kafka_commands_rejected_total[$__rate_interval]))",
+          "legendFormat": "Rejected"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Kafka consumer failures",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_consumer_restarts_total[$__rate_interval]))",
+          "legendFormat": "Restarts"
+        },
+        {
+          "expr": "sum(rate(kafka_command_errors_total[$__rate_interval]))",
+          "legendFormat": "Errors"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Partition lag",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "clamp_min(kafka_consumergroup_lag{consumergroup=\"exchange-workers\",topic=\"exchange.order-commands\"},0)",
+          "legendFormat": "Partition {{partition}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      }
+    }
   ]
 }

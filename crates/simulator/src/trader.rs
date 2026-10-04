@@ -142,7 +142,7 @@ async fn tick(
         }
     }
     let markets =
-        sqlx::query("SELECT instrument,reference_price FROM market_state WHERE price_source='simulated' OR updated_at > now()-interval '30 seconds' ORDER BY instrument")
+        sqlx::query("SELECT s.instrument,s.reference_price,i.base_currency,i.quote_currency FROM market_state s JOIN instruments i ON i.symbol=s.instrument WHERE s.price_source='simulated' OR s.updated_at > now()-interval '30 seconds' ORDER BY s.instrument")
             .fetch_all(&mut *db)
             .await?;
     if markets.is_empty() {
@@ -162,8 +162,36 @@ async fn tick(
     } else {
         OrderType::Limit
     };
-    let quantity = (Decimal::from(rng.random_range(10..=200)) / reference).round_dp(8);
     let limit = (reference * Decimal::new(rng.random_range(9960..=10040), 4)).round_dp(2);
+    let currency: String = market.get(if side == Side::Buy {
+        "quote_currency"
+    } else {
+        "base_currency"
+    });
+    let available = sqlx::query_scalar::<_, Decimal>(
+        "SELECT available FROM accounts WHERE user_id=$1 AND currency=$2",
+    )
+    .bind(user)
+    .bind(currency)
+    .fetch_optional(&mut *db)
+    .await?
+    .unwrap_or_default();
+    let fraction = Decimal::new(rng.random_range(100..=1000), 4);
+    // Budget includes the market-buy reservation's 5% price protection.
+    let unit_cost = if side == Side::Sell {
+        Decimal::ONE
+    } else if order_type == OrderType::Limit {
+        limit
+    } else {
+        reference * Decimal::new(105, 2)
+    };
+    let quantity = (available * fraction / unit_cost)
+        .round_dp_with_strategy(8, rust_decimal::RoundingStrategy::ToZero);
+    if quantity <= Decimal::ZERO {
+        metrics::counter!("simulation_orders_skipped_total", "reason"=>"insufficient_funds")
+            .increment(1);
+        return Ok(());
+    }
     let order = NewOrder {
         client_order_id: Uuid::new_v4().to_string(),
         instrument: instrument.clone(),

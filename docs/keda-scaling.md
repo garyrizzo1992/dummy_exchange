@@ -20,7 +20,11 @@ flowchart LR
 ```
 
 The HTTP API remains synchronous. Traders publish placements and cancellations
-instead of calling trading functions directly. Workers check the persistent
+instead of calling trading functions directly. Orders use
+a random 1%–10% budget from available funds: USD for buys and the selected
+coin for sells. Reserved funds are excluded. Market-buy sizing includes the 5%
+price-protection reserve; quantities round down to eight decimal places.
+Workers check the persistent
 trader/account association, validate and reserve balances using the existing
 trading transaction, and commit Kafka offsets after database work. Account UUIDs
 are Kafka keys, preserving placement/cancellation order for each account.
@@ -57,6 +61,8 @@ Deployment and trader StatefulSet and uses `RespectIgnoreDifferences=true`.
 Argo still displays live replica counts. Git owns images, resources and scaling
 rules; KEDA owns replicas. Default/minikube profiles leave Kafka/KEDA disabled;
 development image promotion enables them with compatible binaries.
+The trader load controller/scaler use Argo sync wave 2, after the trader image
+rollout in wave 1, so a first deployment cannot scale the previous producer image.
 
 Kafka has an internal ClusterIP listener only. Strimzi network policies restrict
 clients to trader/worker pods and KEDA; no Cloudflare route exists. The dev
