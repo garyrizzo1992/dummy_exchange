@@ -5,7 +5,7 @@ mod security;
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode},
     middleware,
     response::{IntoResponse, Response},
@@ -80,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/orders/{id}/cancel", post(cancel_order))
         .route("/v1/orders", get(open_orders))
         .route("/v1/accounts/balances", get(balances))
+        .route("/v1/accounts/leaderboard", get(leaderboard))
         .route("/v1/fills", get(fills))
         .route("/v1/ui", get(frontend))
         .route("/v1/ui/", get(frontend))
@@ -334,6 +335,59 @@ async fn open_orders(
         }));
     }
     Ok(Json(orders))
+}
+
+#[derive(Deserialize, Default)]
+struct LeaderboardPage {
+    #[serde(default)]
+    offset: u32,
+}
+
+async fn leaderboard(
+    State(app): State<AppState>,
+    Query(page): Query<LeaderboardPage>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // One statement keeps the ranking, count and prices in a consistent snapshot.
+    let rows = sqlx::query(
+        "WITH prices AS (
+            SELECT i.base_currency AS currency, s.reference_price AS price
+            FROM instruments i JOIN market_state s ON s.instrument=i.symbol
+            WHERE i.quote_currency='USD'
+        ), totals AS (
+            SELECT u.id, t.trader_key,
+                   COALESCE(SUM((a.available+a.reserved) *
+                     CASE WHEN a.currency='USD' THEN 1 ELSE COALESCE(p.price,0) END),0) AS equity
+            FROM users u LEFT JOIN accounts a ON a.user_id=u.id
+            LEFT JOIN prices p ON p.currency=a.currency
+            LEFT JOIN simulated_traders t ON t.user_id=u.id
+            GROUP BY u.id,t.trader_key
+        ), ranked AS (
+            SELECT *, ROW_NUMBER() OVER (ORDER BY equity DESC,id) AS rank,
+                   COUNT(*) OVER () AS total FROM totals
+        ) SELECT * FROM ranked ORDER BY rank LIMIT 101 OFFSET $1",
+    )
+    .bind(i64::from(page.offset))
+    .fetch_all(&app.db)
+    .await
+    .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let has_more = rows.len() > 100;
+    let accounts: Vec<_> = rows
+        .iter()
+        .take(100)
+        .map(|row| {
+            serde_json::json!({
+                "rank": row.get::<i64,_>("rank"),
+                "account_id": row.get::<Uuid,_>("id"),
+                "trader": row.get::<Option<String>,_>("trader_key"),
+                "equity_usd": row.get::<Decimal,_>("equity"),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "accounts": accounts,
+        "total": rows.first().map(|r|r.get::<i64,_>("total")).unwrap_or(0),
+        "has_more": has_more,
+    })))
 }
 
 async fn balances(

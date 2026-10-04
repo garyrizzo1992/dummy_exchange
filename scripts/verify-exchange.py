@@ -32,6 +32,25 @@ try:
  sql("INSERT INTO users(email,password_hash) VALUES('legacy@example.com','"+old+"')")
  assert req('/v1/auth/login',{'email':'legacy@example.com','password':'old-password'})[0]==200
  assert sql("SELECT password_hash LIKE '$argon2id$%' FROM users WHERE email='legacy@example.com'")=='t'
+ # Leaderboard values crypto at reference prices and includes reserved funds.
+ uid=sql("SELECT id FROM users WHERE email='integration@example.com'")
+ sql("UPDATE accounts SET available=99990,reserved=10 WHERE user_id='"+uid+"' AND currency='USD'")
+ sql("UPDATE accounts SET available=1,reserved=0.5 WHERE user_id='"+uid+"' AND currency='BTC'")
+ board=req('/v1/accounts/leaderboard')[1]
+ mine=next(r for r in board['accounts'] if r['account_id']==uid)
+ expected=float(sql("SELECT 100000+1.5*reference_price FROM market_state WHERE instrument='BTC-USD'"))
+ assert float(mine['equity_usd'])==expected,(mine,expected)
+ assert 'integration@example.com' not in json.dumps(board)
+ assert board['accounts'][0]['rank']==1
+ sql("INSERT INTO users(email,password_hash) SELECT 'leaderboard-test-'||n||'@example.com','disabled' FROM generate_series(1,101) n")
+ first_page=req('/v1/accounts/leaderboard')[1];last_page=req('/v1/accounts/leaderboard?offset=100')[1]
+ assert len(first_page['accounts'])==100 and first_page['has_more']
+ assert last_page['accounts'][0]['rank']==101 and not last_page['has_more']
+ assert not {r['account_id'] for r in first_page['accounts']} & {r['account_id'] for r in last_page['accounts']}
+ assert req('/v1/accounts/leaderboard?offset=-1')[0]==400
+ sql("DELETE FROM users WHERE email LIKE 'leaderboard-test-%'")
+ sql("UPDATE accounts SET available=100000,reserved=0 WHERE user_id='"+uid+"' AND currency='USD'")
+ sql("UPDATE accounts SET available=0,reserved=0 WHERE user_id='"+uid+"' AND currency='BTC'")
  before=req('/v1/accounts/balances',token=token)[1]
  bad={'client_order_id':'exploit','instrument':'BTC-USD','side':'buy','order_type':'market','quantity':'1','limit_price':'-1'}
  assert req('/v1/orders',bad,token)[0]==400

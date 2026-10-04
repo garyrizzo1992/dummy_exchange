@@ -11,6 +11,7 @@ struct Snapshot {
     orders: Vec<Value>,
     fills: Vec<Value>,
     simulation: Value,
+    leaderboard: Value,
 }
 fn number(value: &Value) -> f64 {
     value
@@ -67,6 +68,9 @@ fn array(value: Value) -> Vec<Value> {
 }
 #[component]
 pub fn App() -> impl IntoView {
+    let leaderboard_offset = RwSignal::new(0u32);
+    let auth_error = RwSignal::new(String::new());
+    let auth_message = RwSignal::new(String::new());
     let market = RwSignal::new("BTC-USD".to_owned());
     let snapshot = RwSignal::new(Snapshot::default());
     let token = RwSignal::new(String::new());
@@ -82,6 +86,7 @@ pub fn App() -> impl IntoView {
     let busy = RwSignal::new(false);
     spawn_local(async move {
         loop {
+            let offset = leaderboard_offset.get_untracked();
             let selected = market.get_untracked();
             let auth = token.get_untracked();
             let mut next = snapshot.get_untracked();
@@ -91,6 +96,12 @@ pub fn App() -> impl IntoView {
                 next.book = api(&format!("/v1/markets/{selected}/book"), "", None).await?;
                 next.trades =
                     array(api(&format!("/v1/markets/{selected}/trades"), "", None).await?);
+                next.leaderboard = api(
+                    &format!("/v1/accounts/leaderboard?offset={offset}"),
+                    "",
+                    None,
+                )
+                .await?;
                 next.simulation = api("/v1/simulation", "", None).await?;
                 if !auth.is_empty() {
                     next.balances = array(api("/v1/accounts/balances", &auth, None).await?);
@@ -104,7 +115,10 @@ pub fn App() -> impl IntoView {
                 Ok(())
             }
             .await;
-            if selected == market.get_untracked() && auth == token.get_untracked() {
+            if selected == market.get_untracked()
+                && auth == token.get_untracked()
+                && offset == leaderboard_offset.get_untracked()
+            {
                 match result {
                     Ok(()) => {
                         snapshot.set(next);
@@ -121,7 +135,8 @@ pub fn App() -> impl IntoView {
             return;
         }
         busy.set(true);
-        error.set(String::new());
+        auth_error.set(String::new());
+        auth_message.set(String::new());
         let credentials =
             json!({"email":email.get_untracked(),"password":password.get_untracked()});
         spawn_local(async move {
@@ -139,9 +154,16 @@ pub fn App() -> impl IntoView {
                 Ok(value) => {
                     token.set(text(&value["access_token"]));
                     password.set(String::new());
-                    message.set("Signed in. Your simulated balances are ready.".into());
+                    auth_message.set(
+                        if register {
+                            "Account created. You are signed in with $100,000 in simulated USD."
+                        } else {
+                            "Signed in. Your simulated balances are ready."
+                        }
+                        .into(),
+                    );
                 }
-                Err(e) => error.set(e),
+                Err(e) => auth_error.set(e),
             }
             busy.set(false);
         });
@@ -179,7 +201,7 @@ pub fn App() -> impl IntoView {
         });
     };
     view! {
-        <header><h1>"dummy"<span>"+"</span>"Exchange"</h1><div class="row"><span class="badge">"SIMULATED MARKETS"</span>
+        <header><h1>"Dummy Exchange"</h1><div class="row"><span class="badge">"SIMULATED MARKETS"</span>
             <Show when=move || !token.get().is_empty()><button on:click=move |_| {token.set(String::new());snapshot.update(|s|{s.balances.clear();s.orders.clear();s.fills.clear();});}>"Sign out"</button></Show>
         </div></header>
         <div class="notice">"Demo exchange | All balances and orders are simulated. No deposits or real money."</div>
@@ -212,15 +234,23 @@ pub fn App() -> impl IntoView {
                 {move ||snapshot.get().trades.into_iter().take(14).map(|v|view!{<tr><td class="buy">{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td><td>{text(&v["time"]).get(11..19).unwrap_or("").to_owned()}</td></tr>}).collect_view()}
             </tbody></table></section>
             <section class="panel"><h2>"Markets"</h2><table><thead><tr><th>"Pair"</th><th>"Reference price"</th></tr></thead><tbody>{move ||snapshot.get().instruments.into_iter().map(|v|view!{<tr><td>{text(&v["symbol"])}</td><td>{money(&v["reference_price"])}</td></tr>}).collect_view()}</tbody></table><p class="muted">"Autonomous traders place real simulated orders and settle against their account balances."</p></section>
+            <section class="panel account leaderboard"><h2>"Account balance leaderboard"</h2>
+                <p class="muted">"Total holdings in USD, including available and reserved balances. Crypto uses current reference prices."</p>
+                <div class="table-scroll"><table><thead><tr><th>"Rank"</th><th>"Account"</th><th>"Total value (USD)"</th></tr></thead><tbody>
+                    {move ||snapshot.get().leaderboard["accounts"].as_array().cloned().unwrap_or_default().into_iter().map(|v|view!{<tr><td>{v["rank"].to_string()}</td><td class="account-id">{v["trader"].as_str().map(str::to_owned).unwrap_or_else(||text(&v["account_id"]))}</td><td>{format!("${}",money(&v["equity_usd"]))}</td></tr>}).collect_view()}
+                </tbody></table></div>
+                <div class="row"><button disabled=move ||leaderboard_offset.get()==0 on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_sub(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Previous"</button><span>{move ||format!("{} accounts",snapshot.get().leaderboard["total"].as_u64().unwrap_or(0))}</span><button disabled=move ||snapshot.get().leaderboard["has_more"]!=true on:click=move |_|{leaderboard_offset.update(|v|*v=v.saturating_add(100));snapshot.update(|s|s.leaderboard=Value::Null);}>"Next"</button></div>
+            </section>
             <section class="panel account"><h2>"Your account"</h2>
+                <p class="error" role="alert">{move ||auth_error.get()}</p><p class="success" role="status">{move ||auth_message.get()}</p>
                 <Show when=move ||token.get().is_empty() fallback=move ||view!{<div class="account-grid"><div><h3>"Balances"</h3><table><thead><tr><th>"Asset"</th><th>"Available"</th><th>"Reserved"</th></tr></thead><tbody>{move ||snapshot.get().balances.into_iter().map(|v|view!{<tr><td>{text(&v["currency"])}</td><td>{format!("{:.6}",number(&v["available"]))}</td><td>{format!("{:.6}",number(&v["reserved"]))}</td></tr>}).collect_view()}</tbody></table></div><div><h3>"Open orders"</h3><table><thead><tr><th>"Market / Side"</th><th>"Remaining"</th><th>"Price"</th><th>"Action"</th></tr></thead><tbody>{move ||snapshot.get().orders.into_iter().map(|v|{let id=text(&v["id"]);view!{<tr><td>{format!("{} | {}",text(&v["instrument"]),text(&v["side"]))}</td><td>{format!("{:.6}",number(&v["remaining"]))}</td><td>{money(&v["limit_price"])}</td><td><button class="cancel" on:click=move |_|{let id=id.clone();spawn_local(async move{match api(&format!("/v1/orders/{id}/cancel"),&token.get_untracked(),Some(json!({}))).await{Ok(_)=>message.set("Order cancelled.".into()),Err(e)=>error.set(e)}});}>"Cancel"</button></td></tr>}}).collect_view()}</tbody></table><h3>"Recent fills"</h3><table><tbody>{move ||snapshot.get().fills.into_iter().take(10).map(|v|view!{<tr><td>{text(&v["instrument"])}</td><td>{money(&v["price"])}</td><td>{format!("{:.6}",number(&v["quantity"]))}</td></tr>}).collect_view()}</tbody></table></div></div>}>
                     <form class="auth" on:submit=move |ev|{ev.prevent_default();authenticate(false);}>
                         <p class="muted">"Create a demo account with $100,000 in simulated USD."</p><label>"Email"<input type="email" autocomplete="username" required prop:value=move ||email.get() on:input=move |ev|email.set(event_target_value(&ev))/></label>
-                        <label>"Password"<input type="password" autocomplete="current-password" required maxlength="128" prop:value=move ||password.get() on:input=move |ev|password.set(event_target_value(&ev))/></label>
-                        <div class="row"><button type="submit" disabled=move ||busy.get()>"Sign in"</button><button type="button" disabled=move ||busy.get() on:click=move |_|authenticate(true)>"Create account"</button></div>
+                        <label>"Password"<input type="password" autocomplete="current-password" placeholder="At least 12 characters to create an account" required maxlength="128" prop:value=move ||password.get() on:input=move |ev|password.set(event_target_value(&ev))/></label>
+                        <div class="row"><button type="submit" disabled=move ||busy.get()>"Sign in"</button><button type="button" disabled=move ||busy.get() on:click=move |_|authenticate(true)>{move ||if busy.get(){"Processing..."}else{"Create account"}}</button></div>
                     </form>
                 </Show>
             </section>
-        </main><footer>"dummy+Exchange | Rust powered | Simulated trading"</footer>
+        </main><footer>"Dummy Exchange | Rust powered | Simulated trading"</footer>
     }
 }
