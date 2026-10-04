@@ -81,9 +81,10 @@ run "additional_services" {
         hostname = "grafana.garyrizzo.dev"
         service  = "http://dummy-exchange-dev-dummy-exchange-grafana.dummy-exchange.svc.cluster.local:3000"
       }
-      prometheus = {
-        hostname = "prometheus.garyrizzo.dev"
-        service  = "http://dummy-exchange-dev-dummy-exchange-prometheus.dummy-exchange.svc.cluster.local:9090"
+      argocd = {
+        hostname      = "argocd.garyrizzo.dev"
+        service       = "https://argocd-server.argocd.svc.cluster.local:443"
+        no_tls_verify = true
       }
     }
   }
@@ -97,7 +98,56 @@ run "additional_services" {
     error_message = "Each additional hostname needs proxied tunnel DNS and its own direct Service destination."
   }
   assert {
+    condition     = cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress[1].origin_request.no_tls_verify == true && cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress[1].service == "https://argocd-server.argocd.svc.cluster.local:443"
+    error_message = "Argo CD must use HTTPS with its development self-signed certificate accepted only on its own route."
+  }
+  assert {
     condition     = length(cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress) == 4 && cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress[3].service == "http_status:404"
     error_message = "Additional routes must retain the final 404 catch-all."
+  }
+}
+
+run "protected_route_waits_for_access" {
+  command = plan
+  variables {
+    cloudflare_enabled = true
+    cloudflare_service_routes = {
+      prometheus = {
+        hostname      = "prometheus.garyrizzo.dev"
+        service       = "http://dummy-exchange-dev-dummy-exchange-prometheus.dummy-exchange.svc.cluster.local:9090"
+        access_emails = ["operator@example.com"]
+      }
+    }
+  }
+  assert {
+    condition     = length(cloudflare_dns_record.services) == 0 && length(cloudflare_zero_trust_access_application.services) == 0 && length(cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress) == 2
+    error_message = "Protected routes must remain absent from DNS and Tunnel until Access is enabled."
+  }
+  assert {
+    condition     = length(output.pending_access_hostnames) == 1 && one(output.pending_access_hostnames) == "prometheus.garyrizzo.dev" && length(output.service_urls) == 0
+    error_message = "Outputs must identify unpublished protected routes rather than advertise them as accessible."
+  }
+}
+
+run "protected_route_with_email_login" {
+  command = plan
+  variables {
+    cloudflare_enabled        = true
+    cloudflare_access_enabled = true
+    cloudflare_service_routes = {
+      prometheus = {
+        hostname      = "prometheus.garyrizzo.dev"
+        service       = "http://dummy-exchange-dev-dummy-exchange-prometheus.dummy-exchange.svc.cluster.local:9090"
+        access_emails = ["operator@example.com"]
+      }
+    }
+  }
+  assert {
+    condition     = cloudflare_zero_trust_access_application.services["prometheus"].domain == cloudflare_dns_record.services["prometheus"].name && cloudflare_zero_trust_access_application.services["prometheus"].policies[0].decision == "allow" && one(cloudflare_zero_trust_access_application.services["prometheus"].policies[0].include).email.email == "operator@example.com"
+    error_message = "Prometheus must be protected by an allow policy for the specified operator email."
+  }
+  assert {
+    condition     = cloudflare_zero_trust_access_identity_provider.email[0].type == "onetimepin" && length(cloudflare_zero_trust_tunnel_cloudflared_config.api[0].config.ingress) == 3
+    error_message = "Protected routes must have email-code login and a tunnel destination."
   }
 }

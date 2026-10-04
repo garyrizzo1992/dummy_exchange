@@ -26,7 +26,9 @@ and recovery instructions.
 
 Public API routing uses a [free Cloudflare Tunnel with Terraform-managed DNS](docs/cloudflare.md)
 at `api.garyrizzo.dev`. The existing OCI nodes and application Services stay private; no OCI
-load balancer is created. The ignored `provisioning/.cloudflare` API token must
+load balancer is created. The VCN has only the private VM subnet, with NAT for
+outbound access and OCI Bastion for operator SSH. See [dev service access](docs/dev-access.md)
+for Grafana, Argo CD, protected Prometheus and private management commands. The ignored `provisioning/.cloudflare` API token must
 allow tunnel and DNS management. Configure `CLOUDFLARE_API_TOKEN` in the GitHub
 `dev` environment for CI and drift checks.
 

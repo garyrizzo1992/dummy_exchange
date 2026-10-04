@@ -171,9 +171,11 @@ variable "api_service_url" {
 variable "cloudflare_service_routes" {
   description = "Additional public hostname routes to private Kubernetes Services. Keys identify Terraform-managed DNS records. Protect administrative services before publishing them."
   type = map(object({
-    hostname = string
-    service  = string
-    path     = optional(string)
+    hostname      = string
+    service       = string
+    path          = optional(string)
+    no_tls_verify = optional(bool, false)
+    access_emails = optional(set(string), [])
   }))
   default = {}
   validation {
@@ -187,4 +189,10 @@ variable "cloudflare_service_routes" {
     condition     = length(distinct(concat([var.api_hostname], [for route in values(var.cloudflare_service_routes) : route.hostname]))) == length(var.cloudflare_service_routes) + 1
     error_message = "Public hostnames must be unique, including the API hostname."
   }
+}
+
+variable "cloudflare_access_enabled" {
+  description = "Enable protected routes after Cloudflare Access is activated and the API token has Access edit permissions. Protected routes are omitted from DNS and Tunnel until enabled."
+  type        = bool
+  default     = false
 }

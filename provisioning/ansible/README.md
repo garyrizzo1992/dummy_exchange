@@ -40,3 +40,19 @@ The scripts use the Linux OCI CLI and `~/.oci/config`, with the SSH key at
 `~/.ssh/id_ed25519`. Set `OCI_CLI_CONFIG_FILE` or `SSH_KEY_PATH` to override these
 locations. With instance-principal authentication, set `OCI_TENANCY_OCID` so
 the scripts do not need a local OCI configuration file.
+
+## Kubernetes and private service access
+
+From the repository root, use Bastion without downloading an administrator kubeconfig:
+
+```bash
+bash provisioning/ansible/dev-kubectl.sh get pods -A
+bash provisioning/ansible/dev-forward.sh prometheus
+bash provisioning/ansible/dev-forward.sh postgres
+bash provisioning/ansible/dev-forward.sh redis
+```
+
+Forwarding binds to localhost. Keep each forward open in its own terminal;
+Ctrl-C closes it. The optional second argument selects a different local port.
+See the [dev service access inventory](../terraform/docs/dev-access.md) for
+all UIs, management APIs, authentication and private diagnostic endpoints.

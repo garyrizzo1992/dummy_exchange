@@ -1,4 +1,4 @@
-# VCN, gateways, routes, and subnets. The public subnet is retained for compatibility; no load balancer is created.
+# Private VCN and subnet. NAT provides outbound Internet access for nodes and Tunnel.
 
 resource "oci_core_vcn" "vcn" {
   compartment_id = oci_identity_compartment.dummy_exchange.id
@@ -6,28 +6,6 @@ resource "oci_core_vcn" "vcn" {
   dns_label      = "dummyexchange"
   display_name   = "${var.application}-${var.environment}-vcn"
   freeform_tags  = local.freeform_tags
-}
-
-resource "oci_core_internet_gateway" "internet_gateway" {
-  compartment_id = oci_identity_compartment.dummy_exchange.id
-  vcn_id         = oci_core_vcn.vcn.id
-  display_name   = "${var.application}-${var.environment}-igw"
-  enabled        = true
-  freeform_tags  = local.freeform_tags
-}
-
-resource "oci_core_route_table" "public_load_balancer" {
-  compartment_id = oci_identity_compartment.dummy_exchange.id
-  vcn_id         = oci_core_vcn.vcn.id
-  display_name   = "${var.application}-${var.environment}-public-lb-rt"
-
-  route_rules {
-    destination       = "0.0.0.0/0"
-    destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_internet_gateway.internet_gateway.id
-  }
-
-  freeform_tags = local.freeform_tags
 }
 
 resource "oci_core_route_table" "private_instances" {
@@ -42,17 +20,6 @@ resource "oci_core_route_table" "private_instances" {
   }
 
   freeform_tags = local.freeform_tags
-}
-
-resource "oci_core_subnet" "dummy_exchange_pub" {
-  compartment_id            = oci_identity_compartment.dummy_exchange.id
-  vcn_id                    = oci_core_vcn.vcn.id
-  cidr_block                = "10.0.1.0/24"
-  dns_label                 = "public"
-  display_name              = "${var.application}-${var.environment}-public-lb-subnet"
-  freeform_tags             = local.freeform_tags
-  prohibit_internet_ingress = false
-  route_table_id            = oci_core_route_table.public_load_balancer.id
 }
 
 resource "oci_core_subnet" "dummy_exchange_priv" {

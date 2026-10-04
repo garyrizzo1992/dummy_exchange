@@ -34,13 +34,13 @@ the connector Secret, so protect Secret access and etcd storage.
 ## Credentials
 
 `provisioning/.cloudflare` contains one raw **API token**, not a Global API Key,
-and remains ignored by Git. The supplied token can read DNS but returned `403`
-for tunnel access. Update its permissions, scoped to this account and zone:
+and remains ignored by Git. Scope its permissions to this account and zone:
 
 - Account: **Cloudflare Tunnel — Edit**.
 - Zone: **DNS — Edit** for `garyrizzo.dev`.
 - Zone: **Zone Settings — Edit** for HTTPS redirect.
 - Zone: **Zone — Read** for zone inspection.
+- Account: **Access: Apps and Policies — Edit** and **Access: Organizations, Identity Providers, and Groups — Edit** for protected operator routes.
 
 These permissions need no paid plan. Add the same API token to the GitHub `dev`
 environment as secret `CLOUDFLARE_API_TOKEN` for infrastructure apply/drift checks.
@@ -57,8 +57,8 @@ bash scripts/terraform-cloudflare.sh plan -var-file=envs/dev.tfvars -out=cloudfl
 bash scripts/terraform-cloudflare.sh apply cloudflare.tfplan
 ```
 
-The wrapper loads the ignored token into `CLOUDFLARE_API_TOKEN` and restores the
-previous environment afterward. On Linux/CI, set that environment variable
+The wrapper loads the ignored token into `CLOUDFLARE_API_TOKEN` only for its own
+process and the Terraform process it starts. On Linux/CI, set that environment variable
 through the secret manager and run Terraform normally.
 
 Complete the staged five-chart ownership transfer before reprovisioning a legacy
@@ -93,31 +93,23 @@ manifest checks include private application Services and the two-replica connect
 
 ## Additional service hostnames
 
-No DNS records existed in this zone when checked on 2026-10-04. The current
-API token still returned HTTP 403 for tunnel access, so these changes have not
-been applied. Only the API hostname is configured by default.
+The dev environment configures Grafana and Argo CD alongside the API. Grafana
+uses its existing application login; Argo CD uses its existing login and an HTTPS
+origin with a self-signed development certificate. Terraform creates proxied
+CNAME records and routes them to their private Kubernetes Services.
 
-Additional routes can be added to `envs/dev.tfvars`, for example:
+Prometheus is published with a Cloudflare Access email allow policy in dev, where
+`cloudflare_access_enabled = true`. New accounts must activate Access and grant
+the API token the Access edit permissions above before enabling this flag. Terraform creates the Access application
+before its tunnel route or DNS record. With Access disabled, protected routes
+are omitted and `pending_access_hostnames` reports them.
 
-```hcl
-cloudflare_service_routes = {
-  grafana = {
-    hostname = "grafana.garyrizzo.dev"
-    service  = "http://dummy-exchange-dev-dummy-exchange-grafana.dummy-exchange.svc.cluster.local:3000"
-  }
-  prometheus = {
-    hostname = "prometheus.garyrizzo.dev"
-    service  = "http://dummy-exchange-dev-dummy-exchange-prometheus.dummy-exchange.svc.cluster.local:9090"
-  }
-}
-```
-
-Terraform creates a proxied CNAME for each configured hostname and maps it to
-its private Service through the same tunnel. Protect monitoring endpoints before
-publishing them; Prometheus has no authentication in the current configuration.
-The exchange simulator exposes only metrics and health, not a trading UI, and
-remains private. Existing DNS records must be imported into the matching
-`cloudflare_dns_record.services["grafana"]` address before managing them.
+See [the complete dev service access inventory](dev-access.md) for hostnames,
+management APIs, login requirements and private localhost-forwarding commands.
+The simulator and workers expose metrics and health endpoints, not a trading UI.
+Existing DNS records must be imported into the matching
+`cloudflare_dns_record.services["grafana"]` (or other service) address before
+Terraform can manage them.
 
 Bootstrap retires the old Traefik Argo application and labeled Traefik resources
 after the connector becomes healthy. The existing `ingress` namespace remains
