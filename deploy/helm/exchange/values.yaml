@@ -38,5 +38,5 @@ tracing:
 
 traders:
   enabled: true
-  replicas: 3
+  replicas: 10
   intervalMs: 2000
