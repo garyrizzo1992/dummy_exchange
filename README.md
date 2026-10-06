@@ -1,5 +1,15 @@
 # Dummy Exchange
 
+## Live Demo and Deployment Evidence
+
+| Service | URL |
+| --- | --- |
+| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
+| Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
+| Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
+| Prometheus | [https://prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) |
+
 Dummy Exchange is a Rust project for practising trading. Registered accounts start
 with $100,000 in pretend dollars, which you can use to place orders for BTC,
 ETH and SOL. Prices follow public Coinbase market data; orders, balances and
