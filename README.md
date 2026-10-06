@@ -2,11 +2,14 @@
 
 A simulated crypto exchange built to practise backend engineering, cloud infrastructure and running services in production. Bots trade against generated prices, with balances and market history stored in PostgreSQL.
 
-- **Backend:** Rust, order matching and Kafka workers.
-- **Infrastructure:** Kubernetes on OCI, provisioned with Terraform and Ansible.
-- **Delivery:** GitHub Actions, Helm and Argo CD for tested, automated deployments.
-- **Operations:** Prometheus, Grafana, Loki and OpenTelemetry for metrics, logs and traces.
-- **Frontend:** Rust/WebAssembly hosted on Cloudflare Pages.
+- **Rust / WebAssembly:** Fast services and a browser frontend in one language.
+- **PostgreSQL:** Keeps balances, trades and generated prices across restarts.
+- **Kafka:** Queues trade commands for workers to process.
+- **OCI / Kubernetes:** Hosts services and scales the trading bots.
+- **Terraform / Ansible:** Makes infrastructure and server setup repeatable.
+- **GitHub Actions / Helm / Argo CD:** Tests, packages and deploys changes automatically.
+- **Cloudflare Pages / Tunnel:** Hosts the frontend and exposes services without public node IPs.
+- **Prometheus / Grafana / Loki / OpenTelemetry:** Helps track performance and investigate problems.
 
 Explore the [live exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
 
