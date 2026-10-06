@@ -13,4 +13,6 @@ A simulated crypto exchange built to practise backend engineering, cloud infrast
 
 Explore the [live exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
 
+See the [traffic diagrams](deploy/traffic.md) for request routing, trading, monitoring and deployments.
+
 Deployment details are in [deploy](deploy/README.md), [Terraform](provisioning/terraform/README.md) and [Ansible](provisioning/ansible/README.md).
