@@ -61,3 +61,11 @@ The [rollout and recovery runbook](security-rollout.md) includes credential rota
 Authentication, cross-account access, tested injection inputs, request limits and browser controls passed the bounded checks. Gitleaks found no secrets in 101 commits. Scanner findings need applicability review; they are not all proven exploits. The disposable audit pod and database were removed.
 
 Recheck vendor releases and the live configuration before choosing updates. Keep changes in Terraform, Ansible, Helm or CI as appropriate, test them, then commit and push. Keep portfolio READMEs short, plain and focused on DevOps/SRE evidence, with the AI disclosure retained.
+
+## Wrap-up checkpoint: 7 October 2026
+
+Committed and pushed the hardening in `4f2ac2d`, the exact historical unsigned-JWT test exception in `09fe0d3`, deployment-trigger coverage in `db6e277`, and corrected legacy Argo runtime-user overrides in `2c0179b`. Full-history Gitleaks passes with only that specific fixture excluded. GitHub secret/dependency gates and infrastructure validation pass. Admission policy/binding are live; a privileged-pod server dry run is rejected. Disposable runtime/monitor privilege checks pass. The scoped runner IAM update has been applied by the operator.
+
+At the user's requested stop, application integration tests/image publication and infrastructure apply are still running. The earlier application sync used a legacy admin-user override and left new API/simulator pods unhealthy while the previous API pod stayed available. The override is corrected in Git and the Argo Application, but final rollout health still needs verification. Do not treat runtime credential deployment as complete until every workload is healthy and its live database role is checked.
+
+Resume by checking the latest application/infrastructure Actions runs, Argo operation status and workload logs; finish Local Path/Helm version and disposable PVC verification; scan replacement image digests; apply the repository rules after checks pass; and rehearse application rollback. Human Cloudflare Access login, platform-image advisories and the planned PostgreSQL/Kafka certificate rollout remain open. Backup restore is already verified (16 seconds); this is separate from application rollback.
