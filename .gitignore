@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.wrangler/
 
 # Terraform: state, plans, local inputs, and backend settings can contain secrets.
 **/.terraform/
