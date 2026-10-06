@@ -1,0 +1,2 @@
+# Deliberately unsigned, payload-only JWT in the authentication rejection test.
+4f2ac2d4a6d9f4bce2bb54861e090a1fbc2d9e62:crates/api/src/main.rs:jwt:648
