@@ -26,6 +26,7 @@ on:
       - scripts/requirements-helm.txt
       - .github/workflows/security.yml
       - .trivyignore.yaml
+      - .gitleaksignore
       - scripts/install-security-tools.py
       - scripts/check-workflow-security.py
       - .github/workflows/application.yml
@@ -54,6 +55,7 @@ on:
       - '!deploy/helm/exchange/values-dev.yaml'
       - .github/workflows/security.yml
       - .trivyignore.yaml
+      - .gitleaksignore
       - scripts/install-security-tools.py
       - scripts/check-workflow-security.py
       - .github/workflows/application.yml
