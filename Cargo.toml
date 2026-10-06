@@ -16,7 +16,7 @@ clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
 jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
 metrics = "0.24"
-metrics-exporter-prometheus = "0.16"
+metrics-exporter-prometheus = "0.18"
 opentelemetry = "0.32"
 opentelemetry_sdk = "0.32.1"
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
