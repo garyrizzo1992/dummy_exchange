@@ -8,8 +8,10 @@ tracing:
 # Enabled atomically with the image that supports trader mode.
 traders:
   enabled: true
+  # Bound development load to the capacity of the shared database node.
   autoscaling:
     enabled: true
+    maxReplicas: 8
 priceSource: coinbase
 kafka:
   enabled: true
