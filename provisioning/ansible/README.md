@@ -13,6 +13,9 @@ run it locally. On the private CI runner, `SSH_CONNECTION_MODE=private` uses
 private connections and instance identity. Terraform runs this wrapper
 automatically.
 
+Bootstrap reads the local RPM database and skips DNF when the required node
+packages are already installed, avoiding unnecessary repository metadata refreshes.
+
 Node preparation limits background `dnf-makecache` to 384 MiB of memory before
 throttling and 512 MiB before termination. Kubelet reserves 1 GiB for the OS and
 512 MiB for Kubernetes services, with pod eviction below 500 MiB of available

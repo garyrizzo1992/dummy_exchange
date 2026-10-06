@@ -114,7 +114,13 @@
         gpgkey: https://pkgs.k8s.io/core:/stable:/v1.37/rpm/repodata/repomd.xml.key
         exclude: kubelet kubeadm kubectl cri-tools kubernetes-cni
 
-    # Install kubeadm, kubelet, kubectl, and the container runtime.
+    # Read the RPM database without loading large remote repository metadata.
+    - name: Inspect installed node packages
+      ansible.builtin.package_facts:
+        manager: rpm
+
+    # Existing nodes need no DNF transaction; refreshing Oracle metadata can
+    # otherwise consume several GiB during an unrelated infrastructure update.
     - name: Install Kubernetes packages
       ansible.builtin.dnf:
         name:
@@ -124,6 +130,9 @@
           - kubectl
         state: present
         disable_excludes: kubernetes
+      when: >-
+        ['containerd.io', 'kubelet', 'kubeadm', 'kubectl']
+        | difference(ansible_facts.packages.keys() | list) | length > 0
 
     # Kubernetes requires a CRI-compatible runtime. This generates containerd's
     # default configuration before changing its cgroup driver:
