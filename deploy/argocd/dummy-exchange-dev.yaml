@@ -48,6 +48,10 @@ spec:
       - values.yaml
       - values-dev.yaml
       valuesObject:
+        migrations:
+          extraEnv:
+          - name: DATABASE_URL
+            value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
         extraEnv:
         - name: DATABASE_URL
           value: postgresql://exchange_app:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable

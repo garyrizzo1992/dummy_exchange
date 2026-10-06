@@ -36,7 +36,7 @@ spec:
             runAsUser: 10001
             capabilities: { drop: ["ALL"] }
           env:
-            {{- include "exchange-api.databaseEnv" (dict "Values" (mergeOverwrite (deepCopy .Values) (dict "database" (mergeOverwrite (deepCopy .Values.database) .Values.migrations.database))) "Release" .Release "Chart" .Chart) | nindent 12 }}
+            {{- include "exchange-api.databaseEnv" (dict "Values" (mergeOverwrite (deepCopy .Values) (dict "database" (mergeOverwrite (deepCopy .Values.database) .Values.migrations.database) "extraEnv" (.Values.migrations.extraEnv | default list))) "Release" .Release "Chart" .Chart) | nindent 12 }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
 {{- end }}

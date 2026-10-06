@@ -31,6 +31,8 @@ migrations:
   enabled: true
   # Override user and secret here before switching runtime credentials.
   database: {}
+  # Migration-only overrides; runtime extraEnv is never inherited.
+  extraEnv: []
   activeDeadlineSeconds: 300
   resources:
     requests:

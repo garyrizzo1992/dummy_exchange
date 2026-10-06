@@ -151,6 +151,22 @@ def main():
         for source in sources:
             for filename in source['helm']['valueFiles']:
                 assert (ROOT / source['path'] / filename).exists()
+        if profile == 'dev':
+            source = sources[0]
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml') as values:
+                yaml.safe_dump(source['helm'].get('valuesObject', {}), values)
+                values.flush()
+                location = ROOT / source['path']
+                rendered = validate(run(args.helm, 'template', release, str(location),
+                                        '-f', str(location/'values-dev.yaml'), '-f', values.name))
+            envs = {d['kind']: {e['name']: e for e in d['spec']['template']['spec']['containers'][0]['env']}
+                    for d in rendered if d['kind'] in ('Deployment', 'Job')}
+            assert envs['Job']['PGUSER']['value'] == 'postgres'
+            assert envs['Job']['PGPASSWORD']['valueFrom']['secretKeyRef']['name'] == 'dummy-exchange-secrets'
+            assert envs['Job']['DATABASE_URL']['value'].startswith('postgresql://postgres:')
+            assert envs['Deployment']['DATABASE_URL']['value'].startswith('postgresql://exchange_app:')
+            assert envs['Deployment']['PGPASSWORD']['valueFrom']['secretKeyRef']['name'] == 'dummy-exchange-runtime-secrets'
         for filename, chart in (('postgres', 'exchange-postgres'), ('monitoring', 'exchange-monitoring')):
             infra = yaml.safe_load((ROOT / f'deploy/argocd/{filename}-{profile}.yaml').read_text())
             assert infra['spec']['source']['path'] == f'deploy/helm/{chart}'
