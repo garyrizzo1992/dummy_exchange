@@ -31,12 +31,20 @@ async fn main() -> anyhow::Result<()> {
             warn!(%error, "simulator metrics server stopped");
         }
     });
-    if env::args().nth(1).as_deref() == Some("trader") {
-        return trader::run().await;
+    let service = async {
+        match env::args().nth(1).as_deref() {
+            Some("trader") => trader::run().await,
+            Some("load-controller") => load::run().await,
+            _ => run_market().await,
+        }
+    };
+    tokio::select! {
+        result = service => result,
+        _ = exchange_config::shutdown::signal() => Ok(()),
     }
-    if env::args().nth(1).as_deref() == Some("load-controller") {
-        return load::run().await;
-    }
+}
+
+async fn run_market() -> anyhow::Result<()> {
     // `?` returns an error from this function if loading the URL or connecting fails.
     let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     let seed_text = env::var("SIMULATION_SEED").unwrap_or_else(|_| "42".to_string());

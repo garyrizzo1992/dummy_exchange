@@ -1,10 +1,11 @@
-.PHONY: build test lint run-api run-worker run-simulator migrate seed bench
+.PHONY: build test lint run-api run-worker run-simulator migrate bench
 build:
-	cargo build --workspace
+	cargo build --workspace --locked
 test:
-	cargo test --workspace
+	cargo test --workspace --locked
 lint:
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --locked -- -D warnings
 run-api:
 	cargo run -p exchange-api
 run-worker:
@@ -12,8 +13,6 @@ run-worker:
 run-simulator:
 	cargo run -p exchange-simulator
 migrate:
-	sqlx migrate run --source migrations
-seed:
-	psql $$DATABASE_URL -f scripts/seed.sql
+	cargo run -p exchange-api --locked -- migrate
 bench:
 	k6 run benchmarks/orders.js

@@ -20,8 +20,8 @@ one sync, with a shared migration hook before their Deployments. See the
 using exact image digests and `values-dev.yaml`. Terraform and Ansible
 set up Argo CD and External Secrets. OCI Vault stores the PostgreSQL password,
 JWT secret and Grafana password. Git contains only their identifiers. Services
-use private ClusterIPs. See [deployment](../README.md#deployment) for setup
-instructions and the limits of local-disk storage.
+use private ClusterIPs. See the [infrastructure guide](../provisioning/terraform/README.md)
+for setup and the [architecture review](../docs/architecture-review.md) for storage limits.
 
 The public API uses `api.garyrizzo.dev` through a free Cloudflare Tunnel and
 direct routing to the private API Service. DNS and tunnel routing belong to Terraform. See

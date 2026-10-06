@@ -23,6 +23,7 @@ jobs:
     # Use main as the reference, even when starting a check manually.
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, x64, oci-dev]
+    timeout-minutes: 15
     environment: dev
     defaults:
       run:

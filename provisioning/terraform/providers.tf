@@ -7,4 +7,7 @@ provider "oci" {
   region           = var.region
 }
 
-provider "cloudflare" {}
+provider "cloudflare" {
+  # Local commands load the ignored token file; CI uses CLOUDFLARE_API_TOKEN.
+  api_token = fileexists("${path.module}/../.cloudflare") ? sensitive(trimspace(file("${path.module}/../.cloudflare"))) : null
+}

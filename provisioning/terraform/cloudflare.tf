@@ -7,6 +7,22 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "api" {
   config_src = "cloudflare"
 }
 
+# Nodes depend on this barrier so destroy stops the connectors first, then
+# waits for Cloudflare to expire their connections before deleting the tunnel.
+resource "terraform_data" "cloudflare_tunnel_drain" {
+  count = var.cloudflare_enabled ? 1 : 0
+  input = {
+    wait_seconds = var.cloudflare_tunnel_destroy_wait_seconds
+  }
+
+  depends_on = [cloudflare_zero_trust_tunnel_cloudflared.api]
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "echo Waiting ${self.input.wait_seconds}s for Cloudflare Tunnel connections to close; sleep ${self.input.wait_seconds}"
+  }
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "api" {
   count      = var.cloudflare_enabled ? 1 : 0
   account_id = var.cloudflare_account_id

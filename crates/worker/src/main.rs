@@ -15,12 +15,7 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    let _telemetry =
-        exchange_config::telemetry::init(if env::args().nth(1).as_deref() == Some("trader") {
-            "exchange-trader"
-        } else {
-            "exchange-matcher"
-        })?;
+    let _telemetry = exchange_config::telemetry::init("exchange-matcher")?;
     let metrics = PrometheusBuilder::new().install_recorder()?;
     let metrics_bind = env::var("WORKER_METRICS_BIND").unwrap_or_else(|_| "0.0.0.0:3001".into());
     tokio::spawn(async move {
@@ -44,25 +39,13 @@ async fn main() -> anyhow::Result<()> {
             sleep(Duration::from_millis(100)).await;
         }
     };
-    tokio::select! { _ = matching => {}, _ = shutdown() => {} }
+    tokio::select! { _ = matching => {}, _ = exchange_config::shutdown::signal() => {} }
     if let Some(consumer) = consumer {
         consumer.abort();
         let _ = consumer.await;
     }
     db.close().await;
     Ok(())
-}
-
-async fn shutdown() {
-    #[cfg(unix)]
-    {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("install SIGTERM handler");
-        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
-    }
-    #[cfg(not(unix))]
-    let _ = tokio::signal::ctrl_c().await;
 }
 
 async fn tick(db: &PgPool, worker_id: &str) -> anyhow::Result<()> {

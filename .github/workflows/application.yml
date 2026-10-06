@@ -13,7 +13,8 @@ on:
       - crates/**
       - migrations/**
       - deploy/helm/**
-      - deploy/ingress/**
+      - .dockerignore
+      - compose.yaml
       - scripts/check-helm.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
@@ -28,7 +29,8 @@ on:
       - crates/**
       - migrations/**
       - deploy/helm/**
-      - deploy/ingress/**
+      - .dockerignore
+      - compose.yaml
       - scripts/check-helm.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
@@ -72,14 +74,17 @@ jobs:
       - name: Verify orders, account ownership, and public API protections
         run: |
           docker run -d --name exchange-verification-postgres -p 127.0.0.1:25432:5432 -e POSTGRES_PASSWORD=test-only-private-password -e POSTGRES_DB=dummy_exchange postgres:18.6-alpine
-          until docker exec exchange-verification-postgres pg_isready -U postgres; do sleep 1; done
+          timeout 60s bash -c 'until docker exec exchange-verification-postgres pg_isready -U postgres; do sleep 1; done'
           cargo build --workspace --locked
           PGHOST=127.0.0.1 PGPORT=25432 PGUSER=postgres PGDATABASE=dummy_exchange PGPASSWORD=test-only-private-password PGSSLMODE=disable target/debug/exchange-api migrate
           python scripts/verify-exchange.py
           docker compose -p exchange-kafka-verification -f compose.yaml -f compose.kafka.yaml up -d kafka1 kafka2 kafka3 kafka-init
           python scripts/verify-kafka.py
+      - name: Clean up disposable integration services
+        if: always()
+        run: |
           docker compose -p exchange-kafka-verification -f compose.yaml -f compose.kafka.yaml down -v
-          docker rm -f exchange-verification-postgres
+          docker rm -f exchange-verification-postgres || true
       - run: cargo build --workspace --release --locked
       - uses: actions/setup-python@v6
         with:
@@ -206,14 +211,31 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: publish-manifests
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: dev
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: mikefarah/yq@v4
+      - name: Check that the built release still matches main
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          git fetch origin main
+          # Allow documentation changes, but never promote old images against
+          # newer source, migrations, chart settings, or build configuration.
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          if ! git diff --quiet "$SOURCE_SHA" origin/main -- \
+            Cargo.toml Cargo.lock crates migrations deploy/helm .dockerignore \
+            compose.yaml compose.kafka.yaml scripts .github/workflows/application.yml; then
+            echo '::error::Release inputs changed after this build. Run the application workflow on current main.'
+            exit 1
+          fi
+          git checkout -B main origin/main
       - name: Record the immutable image digests
         env:
           IMAGE_REGISTRY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}

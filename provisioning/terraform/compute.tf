@@ -26,6 +26,9 @@ resource "oci_core_instance" "control_plane" {
     ssh_authorized_keys = var.ssh_authorized_keys
   }
 
+  # Reverse dependency order stops nodes before the tunnel drain wait.
+  depends_on = [terraform_data.cloudflare_tunnel_drain]
+
   preserve_boot_volume = false
 
   shape_config {
@@ -69,6 +72,9 @@ resource "oci_core_instance" "worker" {
   metadata = {
     ssh_authorized_keys = var.ssh_authorized_keys
   }
+
+  # Reverse dependency order stops nodes before the tunnel drain wait.
+  depends_on = [terraform_data.cloudflare_tunnel_drain]
 
   preserve_boot_volume = false
 

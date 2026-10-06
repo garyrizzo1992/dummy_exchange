@@ -1,6 +1,9 @@
 /target
 .env
 *.local
+__pycache__/
+*.py[cod]
+.venv/
 
 # Terraform: state, plans, local inputs, and backend settings can contain secrets.
 **/.terraform/
@@ -12,7 +15,7 @@ crash.log
 *.tfvars.json
 !*.tfvars.example
 !provisioning/terraform/envs/dev.tfvars
-terraform/backend.hcl
+**/backend.hcl
 
 
 provisioning/.cloudflare

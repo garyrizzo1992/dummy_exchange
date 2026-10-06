@@ -11,18 +11,19 @@ Before the first bootstrap, make the Ansible wrapper executable:
 
 ```bash
 chmod +x provisioning/ansible/ansible-playbook-wrapper.sh
-bash scripts/terraform-cloudflare.sh init
+terraform -chdir=provisioning/terraform init
 ```
 
-Run these commands from the repository root. The Cloudflare wrapper exports the
-token only in its own process and the Terraform process it starts.
+Run these commands from the repository root. Terraform automatically loads the
+ignored `provisioning/.cloudflare` API token file. When that file is absent, the
+Cloudflare provider uses `CLOUDFLARE_API_TOKEN`, as configured in CI.
 
 A third VM runs trusted GitHub Actions jobs on the private network. It
 authenticates through OCI instance identity. External Secrets reads application
 secrets from OCI Vault, so you do not pass them to Terraform.
 
-See [deployment](../../README.md#deployment) for authentication, initial setup
-and recovery instructions.
+See [operator access](docs/dev-access.md) for private management commands and the
+[architecture review](../../docs/architecture-review.md) for recovery improvements.
 
 Public API routing uses a [free Cloudflare Tunnel with Terraform-managed DNS](docs/cloudflare.md)
 at `api.garyrizzo.dev`. The existing OCI nodes and application Services stay private; no OCI

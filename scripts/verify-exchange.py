@@ -26,6 +26,7 @@ try:
  status,value,headers=req('/v1/auth/register',{'email':'integration@example.com','password':'integration-password-123'})
  assert status==200,(status,value);token=value['access_token']
  assert headers['X-Content-Type-Options']=='nosniff'
+ assert uuid.UUID(headers['X-Request-Id']), 'Generated request IDs must reach clients'
  assert sql("SELECT password_hash LIKE '$argon2id$%' FROM users WHERE email='integration@example.com'")=='t'
  assert req('/v1/auth/login',{'email':'integration@example.com','password':'incorrect'})[0]==401
  old=hashlib.sha256(b'old-password').hexdigest()

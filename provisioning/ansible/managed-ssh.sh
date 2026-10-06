@@ -25,13 +25,27 @@ managed_ssh_connection() {
   node="$(oci compute instance list --compartment-id "$COMPARTMENT" --all \
     --query "data[?\"display-name\"==\`$node_name\` && \"lifecycle-state\"==\`RUNNING\`]|[0].id" \
     --raw-output)"
-  plugin="$(oci instance-agent plugin list --compartment-id "$COMPARTMENT" \
-    --instanceagent-id "$node" --name Bastion --query 'data[0].status' --raw-output)"
-
-  [[ "$plugin" == "RUNNING" ]] || {
-    echo "Bastion plugin on $node_name is $plugin." >&2
+  [[ -n "$node" && "$node" != "null" ]] || {
+    echo "Running node $node_name was not found." >&2
     return 1
   }
+  # RUNNING instances can precede the first Oracle Cloud Agent heartbeat.
+  local deadline=$((SECONDS + 600))
+  while true; do
+    if plugin="$(oci instance-agent plugin list --compartment-id "$COMPARTMENT" \
+      --instanceagent-id "$node" --name Bastion --query 'data[0].status' --raw-output 2>&1)"; then
+      [[ "$plugin" == "RUNNING" ]] && break
+    elif [[ "$plugin" != *"Plugin Bastion not present"* ]]; then
+      echo "$plugin" >&2
+      return 1
+    fi
+    if (( SECONDS >= deadline )); then
+      echo "Timed out waiting for Bastion plugin on $node_name: $plugin" >&2
+      return 1
+    fi
+    echo "Waiting for Bastion plugin on $node_name..." >&2
+    sleep 10
+  done
 
   session="$(session_id "$session_name")"
   if [[ -z "$session" || "$session" == "null" ]]; then

@@ -196,3 +196,14 @@ variable "cloudflare_access_enabled" {
   type        = bool
   default     = false
 }
+
+variable "cloudflare_tunnel_destroy_wait_seconds" {
+  description = "Seconds to wait after Kubernetes nodes are destroyed before deleting the Cloudflare Tunnel."
+  type        = number
+  default     = 120
+
+  validation {
+    condition     = var.cloudflare_tunnel_destroy_wait_seconds >= 0 && floor(var.cloudflare_tunnel_destroy_wait_seconds) == var.cloudflare_tunnel_destroy_wait_seconds
+    error_message = "cloudflare_tunnel_destroy_wait_seconds must be a non-negative whole number."
+  }
+}

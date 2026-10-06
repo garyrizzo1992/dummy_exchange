@@ -106,8 +106,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(DefaultBodyLimit::max(16 * 1024))
         .with_state(app)
         .layer(middleware::from_fn(track_request_metrics))
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(TraceLayer::new_for_http());
     let bind = env::var("API_BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let listener = tokio::net::TcpListener::bind(bind).await?;
@@ -115,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
         listener,
         router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(exchange_config::shutdown::signal())
     .await?;
     Ok(())
 }

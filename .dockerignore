@@ -1,7 +1,16 @@
-.git
-.env
-target
-**/target
-*.local
-postgres_data
-redis_data
+# Application builds need only the Rust workspace and embedded migrations.
+# Keep local cloud credentials, Terraform state and tooling out of BuildKit.
+**
+!Cargo.toml
+!Cargo.lock
+!crates/
+!crates/**
+!migrations/
+!migrations/**
+
+**/target/
+**/.env
+**/.env.*
+**/*.local
+crates/frontend/dist/pkg/*.wasm
+crates/frontend/dist/pkg/exchange_frontend*

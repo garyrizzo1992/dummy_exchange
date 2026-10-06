@@ -28,13 +28,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--helm', default=shutil.which('helm') or 'helm')
     parser.add_argument('--kubeconform', default=shutil.which('kubeconform'))
+    parser.add_argument('--kubernetes-version', default='1.37.0')
     args = parser.parse_args()
 
     def validate(output):
         docs = [d for d in yaml.safe_load_all(output) if d]
         if args.kubeconform:
             core = [d for d in docs if not d['apiVersion'].startswith(('external-secrets.io/', 'keda.sh/', 'kafka.strimzi.io/'))]
-            result = subprocess.run([args.kubeconform, '-strict', '-summary', '-kubernetes-version', '1.27.0'],
+            result = subprocess.run([args.kubeconform, '-strict', '-summary', '-kubernetes-version', args.kubernetes_version],
                                     input=yaml.safe_dump_all(core), text=True, capture_output=True)
             if result.returncode:
                 raise RuntimeError(result.stdout + result.stderr)

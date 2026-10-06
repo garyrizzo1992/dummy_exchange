@@ -48,18 +48,19 @@ Do not put it in committed `.tfvars`, plans or generated manifests.
 
 ## Plan and deploy
 
-From the repository root in WSL or Linux:
+From `provisioning/terraform` in WSL or Linux:
 
 ```bash
-bash scripts/terraform-cloudflare.sh init
-bash scripts/terraform-cloudflare.sh plan -var-file=envs/dev.tfvars -out=cloudflare.tfplan
+terraform init
+terraform plan -var-file=envs/dev.tfvars -out=cloudflare.tfplan
 # Review the whole plan, including any pre-existing infrastructure changes.
-bash scripts/terraform-cloudflare.sh apply cloudflare.tfplan
+terraform apply cloudflare.tfplan
 ```
 
-The wrapper loads the ignored token into `CLOUDFLARE_API_TOKEN` only for its own
-process and the Terraform process it starts. On Linux/CI, set that environment variable
-through the secret manager and run Terraform normally.
+The provider automatically reads `provisioning/.cloudflare` when that file exists,
+trims trailing newlines and marks the value sensitive. The file takes precedence
+locally. When it is absent, the provider uses `CLOUDFLARE_API_TOKEN`, as configured
+in CI. Normal `terraform plan`, `apply` and `destroy` commands need no wrapper.
 
 Complete the staged five-chart ownership transfer before reprovisioning a legacy
 business application. Ansible checks that first, then configures the connector Secret and the tunnel application. DNS alone cannot serve the API
@@ -69,7 +70,7 @@ The API hostname had no DNS record during setup. If another operator creates
 one before apply, import it instead of creating a duplicate:
 
 ```bash
-bash scripts/terraform-cloudflare.sh import -var-file=envs/dev.tfvars 'cloudflare_dns_record.api[0]' '<zone-id>/<dns-record-id>'
+terraform import -var-file=envs/dev.tfvars 'cloudflare_dns_record.api[0]' '<zone-id>/<dns-record-id>'
 ```
 
 After connector token rotation, rerun the Ansible action through a reviewed plan
@@ -114,3 +115,16 @@ Terraform can manage them.
 Bootstrap retires the old Traefik Argo application and labeled Traefik resources
 after the connector becomes healthy. The existing `ingress` namespace remains
 because it now hosts cloudflared, not an ingress controller.
+
+## Teardown
+
+Full `terraform destroy` stops both Kubernetes nodes, then a built-in
+`terraform_data` destroy provisioner waits 120 seconds before tunnel deletion.
+Set `cloudflare_tunnel_destroy_wait_seconds` to adjust the delay. The local
+provisioner requires a shell with `sleep` (WSL/Linux). This is a grace period,
+not a check of Cloudflare connection status; if error 1022 persists, wait and
+retry the destroy. Replicas outside these nodes must be stopped separately.
+
+The barrier must already exist in state from an apply to run during destroy.
+For an already partially destroyed environment, retry the remaining destroy
+instead of applying the full configuration, which would recreate infrastructure.

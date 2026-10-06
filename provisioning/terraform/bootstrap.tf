@@ -44,7 +44,7 @@ resource "terraform_data" "ansible" {
     ]))
   }
 
-  depends_on = [cloudflare_zero_trust_tunnel_cloudflared_config.api, cloudflare_dns_record.api, cloudflare_dns_record.services, cloudflare_zone_setting.https]
+  depends_on = [oci_bastion_bastion.bastion, cloudflare_zero_trust_tunnel_cloudflared_config.api, cloudflare_dns_record.api, cloudflare_dns_record.services, cloudflare_zone_setting.https]
 
   lifecycle {
     action_trigger {

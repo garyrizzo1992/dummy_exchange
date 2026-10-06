@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: dummy_exchange
     ports:
-    - 5432:5432
+    - 127.0.0.1:5432:5432
     volumes:
     - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,7 +27,7 @@ services:
       API_BIND: 0.0.0.0:3000
       RUST_LOG: info
     ports:
-    - 3000:3000
+    - 127.0.0.1:3000:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,7 +85,7 @@ services:
     - --storage.tsdb.retention.time=15d
     - --web.enable-lifecycle
     ports:
-    - 9090:9090
+    - 127.0.0.1:9090:9090
     volumes:
     - prometheus_data:/prometheus
     depends_on:
@@ -101,7 +101,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     ports:
-    - 3001:3000
+    - 127.0.0.1:3001:3000
     volumes:
     - grafana_data:/var/lib/grafana
     depends_on:
