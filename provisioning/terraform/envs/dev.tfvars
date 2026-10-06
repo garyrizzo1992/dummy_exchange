@@ -1,6 +1,9 @@
 environment = "dev"
 application = "dummy-exchange"
 
+# Keep headroom for the control plane, Kafka, and workload bursts.
+control_plane_memory_in_gbs = 16
+
 # DNS and public routing use Cloudflare's Free-plan Tunnel, not a public OCI LB.
 cloudflare_enabled    = true
 cloudflare_account_id = "81ff770ff712c1f376f115fbacc80f5e"
