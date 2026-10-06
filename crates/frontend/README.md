@@ -2,7 +2,34 @@
 
 The Rust/Leptos client is served by the API at `/v1/ui/`, using the same origin for authentication and market requests. Dev URL: https://api.garyrizzo.dev/v1/ui/.
 
-The API Docker build compiles this crate to WebAssembly and packages wasm-bindgen assets. For local use:
+The API Docker build compiles this crate to WebAssembly and packages wasm-bindgen assets.
+
+## Standalone static artifact
+
+With the WASM target and wasm-bindgen CLI installed as shown below, run from the repository root:
+
+```sh
+python3 scripts/build-frontend.py --api-origin https://api.garyrizzo.dev
+```
+
+The complete site is written to `target/frontend-static/`: `index.html`,
+`style.css`, and the `pkg/` JavaScript/WebAssembly assets, with a ZIP archive at
+`target/exchange-frontend-static.zip`. Serve that directory
+with a static web server. Omit `--api-origin` when an API or reverse proxy serves
+`/v1/` on the same origin. The API origin is compiled into the WASM; rebuild to
+change it. The existing API Docker build continues using same-origin requests.
+
+The application workflow uploads `exchange-frontend-static` as a separate GitHub
+Actions artifact. It does not deploy to Cloudflare. Before hosting the artifact
+on a different origin, configure the API's CORS policy for that frontend origin,
+including JSON and Authorization headers and OPTIONS preflight requests.
+
+Cloudflare Pages projects and custom domains can be managed by Terraform using
+`cloudflare_pages_project` and `cloudflare_pages_domain`, plus a DNS record.
+Build and upload the site separately in CI using Wrangler; Terraform manages
+the hosting configuration, while CI deploys the static files.
+
+## Local API hosting
 
 ```sh
 rustup target add wasm32-unknown-unknown

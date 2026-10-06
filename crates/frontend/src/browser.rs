@@ -27,10 +27,15 @@ fn money(value: &Value) -> String {
     format!("{:.2}", number(value))
 }
 async fn api(path: &str, token: &str, body: Option<Value>) -> Result<Value, String> {
+    let url = format!(
+        "{}{}",
+        option_env!("EXCHANGE_API_ORIGIN").unwrap_or(""),
+        path
+    );
     let request = if body.is_some() {
-        Request::post(path)
+        Request::post(&url)
     } else {
-        Request::get(path)
+        Request::get(&url)
     };
     let request = if token.is_empty() {
         request

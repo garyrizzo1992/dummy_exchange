@@ -16,6 +16,7 @@ on:
       - .dockerignore
       - compose.yaml
       - scripts/check-helm.py
+      - scripts/build-frontend.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
       - compose.kafka.yaml
@@ -32,6 +33,7 @@ on:
       - .dockerignore
       - compose.yaml
       - scripts/check-helm.py
+      - scripts/build-frontend.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
       - compose.kafka.yaml
@@ -53,6 +55,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Produce a downloadable static site independently of the API image.
+  frontend-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
+      - run: python3 scripts/build-frontend.py --api-origin https://api.garyrizzo.dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exchange-frontend-static
+          path: target/frontend-static/
+          if-no-files-found: error
+
   # Check the Rust code and Helm chart before building images.
   test:
     runs-on: ubuntu-24.04
