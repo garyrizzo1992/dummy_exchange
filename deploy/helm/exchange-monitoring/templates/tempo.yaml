@@ -70,6 +70,7 @@ spec:
         {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: tempo
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsUser: 10001
         runAsNonRoot: true

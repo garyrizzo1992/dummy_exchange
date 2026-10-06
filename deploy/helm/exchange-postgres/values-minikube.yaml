@@ -1,1 +1,5 @@
 fullnameOverride: exchange
+
+# Local NodePort and operator workflows do not pass through the Tunnel.
+networkPolicy:
+  enabled: false

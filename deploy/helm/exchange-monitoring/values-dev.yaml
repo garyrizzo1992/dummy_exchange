@@ -23,3 +23,8 @@ tracing:
     limits: {cpu: '1', memory: 768Mi}
   persistence:
     storageClass: local-path
+
+# Exporter can read statistics without application DML or superuser access.
+database:
+  user: exchange_monitor
+  secret: {name: dummy-exchange-monitor-postgres-secrets, key: postgres-password}

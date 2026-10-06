@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exchange-ops
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.37
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.37
+---
+# The application namespace includes a host-reading node exporter, so a blanket
+# Pod Security Standard would block it. Enforce these common safeguards instead.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: exchange-pod-safety
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: containers
+      expression: "object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : []) + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : [])"
+    - name: exporter
+      expression: "has(object.spec.serviceAccountName) && object.spec.serviceAccountName == 'dummy-exchange-dev-dummy-exchange-node-exporter'"
+  validations:
+    - expression: "variables.containers.all(c, !has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged)"
+      message: Privileged containers are forbidden in the exchange namespace.
+    - expression: "variables.containers.all(c, !has(c.securityContext) || !has(c.securityContext.runAsUser) || c.securityContext.runAsUser != 0)"
+      message: Explicit root containers are forbidden in the exchange namespace.
+    - expression: "variables.exporter || ((!has(object.spec.hostPID) || !object.spec.hostPID) && (!has(object.spec.hostIPC) || !object.spec.hostIPC) && (!has(object.spec.hostNetwork) || !object.spec.hostNetwork))"
+      message: Host namespaces are reserved for the node exporter service account.
+    - expression: '!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath) || (variables.exporter && v.hostPath.path == "/" && variables.containers.all(c, !has(c.volumeMounts) || c.volumeMounts.all(m, m.name != v.name || (has(m.readOnly) && m.readOnly)))))'
+      message: Only the node exporter may mount the host root, and only read-only.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: exchange-pod-safety
+spec:
+  policyName: exchange-pod-safety
+  validationActions: [Deny, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: dummy-exchange}

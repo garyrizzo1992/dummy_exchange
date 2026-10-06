@@ -26,6 +26,7 @@ RUN cargo build --release --locked -p exchange-api
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 RUN apt-get update \
+    && apt-get upgrade --no-install-recommends -y \
     && apt-get install --no-install-recommends -y ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --uid 10001 exchange

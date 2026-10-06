@@ -43,6 +43,7 @@ spec:
         {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: grafana
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: grafana
           image: {{ .Values.grafana.image }}

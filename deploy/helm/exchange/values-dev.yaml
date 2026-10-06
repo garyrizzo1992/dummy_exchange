@@ -16,3 +16,8 @@ traders:
 priceSource: simulated
 kafka:
   enabled: true
+
+# Runtime DML credentials are independent from the migration administrator.
+database:
+  user: exchange_app
+  secret: {name: dummy-exchange-runtime-secrets, key: postgres-password}

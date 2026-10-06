@@ -13,3 +13,12 @@ trustCloudflare: true
 corsAllowedOrigins:
   - https://exchange.garyrizzo.dev
   - https://dummy-exchange-dev-frontend.pages.dev
+
+# Runtime DML credentials are independent from the migration administrator.
+database:
+  user: exchange_app
+  secret: {name: dummy-exchange-runtime-secrets, key: postgres-password}
+migrations:
+  database:
+    user: postgres
+    secret: {name: dummy-exchange-secrets, key: postgres-password}

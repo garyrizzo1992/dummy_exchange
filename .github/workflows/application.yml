@@ -24,6 +24,10 @@ on:
       - scripts/reset-bots.sql
       - compose.kafka.yaml
       - scripts/requirements-helm.txt
+      - .github/workflows/security.yml
+      - .trivyignore.yaml
+      - scripts/install-security-tools.py
+      - scripts/check-workflow-security.py
       - .github/workflows/application.yml
   push:
     branches: [main]
@@ -48,6 +52,10 @@ on:
       - '!deploy/helm/exchange-api/values-dev.yaml'
       - '!deploy/helm/exchange-worker/values-dev.yaml'
       - '!deploy/helm/exchange/values-dev.yaml'
+      - .github/workflows/security.yml
+      - .trivyignore.yaml
+      - scripts/install-security-tools.py
+      - scripts/check-workflow-security.py
       - .github/workflows/application.yml
   workflow_dispatch: # Also lets us start a run from the Actions tab.
 
@@ -61,18 +69,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+
   # Produce a downloadable static site independently of the API image.
   frontend-artifact:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@c6590455eca8e79d081430ebfe2074192ae90290 # 1.98.1
         with:
           targets: wasm32-unknown-unknown
       - run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
       - run: python3 scripts/build-frontend.py --api-origin https://api.garyrizzo.dev
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: exchange-frontend-static
           path: target/frontend-static/
@@ -80,7 +91,7 @@ jobs:
 
   deploy-frontend:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: [frontend-artifact, test]
+    needs: [frontend-artifact, test, security]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: dev
@@ -89,13 +100,13 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: '81ff770ff712c1f376f115fbacc80f5e'
       PAGES_PROJECT: dummy-exchange-dev-frontend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: exchange-frontend-static
           path: target/frontend-static/
@@ -116,14 +127,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dtolnay/rust-toolchain@c6590455eca8e79d081430ebfe2074192ae90290 # 1.98.1
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
         with:
-          version: v3.17.3
+          version: v3.22.0
       - run: cargo fmt --all -- --check
       - name: Ensure native build dependencies are installed
         run: |
@@ -152,20 +163,21 @@ jobs:
           docker compose -p exchange-kafka-verification -f compose.yaml -f compose.kafka.yaml down -v
           docker rm -f exchange-verification-postgres || true
       - run: cargo build --workspace --release --locked
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
       - run: python -m pip install -r scripts/requirements-helm.txt
       - name: Install Kubernetes manifest validator
         run: |
           curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz -o /tmp/kubeconform.tar.gz
+          printf '%s  %s\n' '9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883' /tmp/kubeconform.tar.gz | sha256sum -c -
           sudo tar -xzf /tmp/kubeconform.tar.gz -C /usr/local/bin kubeconform
       - run: python scripts/check-helm.py
 
   # For pull requests, build all three images in parallel without uploading them.
   verify-images:
     if: github.event_name == 'pull_request'
-    needs: test
+    needs: [test, security]
     timeout-minutes: 60
     runs-on: ubuntu-24.04
     strategy:
@@ -176,10 +188,10 @@ jobs:
           - dockerfile: crates/worker/Dockerfile
           - dockerfile: crates/simulator/Dockerfile
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -189,7 +201,7 @@ jobs:
   # Build each architecture on its native runner, then combine immutable digests.
   publish-images:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: test
+    needs: [test, security]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -203,15 +215,15 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - id: image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: crates/${{ matrix.image }}/Dockerfile
@@ -220,6 +232,12 @@ jobs:
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-${{ matrix.image }}:sha-${{ github.sha }}-${{ matrix.arch }}
           provenance: mode=max
           sbom: true
+      - name: Install verified image scanner
+        run: python3 scripts/install-security-tools.py --directory "$RUNNER_TEMP/security-tools"
+      - name: Gate the exact published architecture digest
+        env:
+          IMAGE_REF: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dummy-exchange-${{ matrix.image }}@${{ steps.image.outputs.digest }}
+        run: '"$RUNNER_TEMP/security-tools/trivy" image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml "$IMAGE_REF"'
       - name: Record architecture digest
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
@@ -227,7 +245,7 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           printf '%s' "$IMAGE_DIGEST" > "/tmp/digests/$DIGEST_FILE"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digest-${{ matrix.image }}-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -243,13 +261,13 @@ jobs:
       worker_digest: ${{ steps.manifests.outputs.worker_digest }}
       simulator_digest: ${{ steps.manifests.outputs.simulator_digest }}
     steps:
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - uses: actions/download-artifact@v4
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: /tmp/digests
           pattern: digest-*
@@ -282,11 +300,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: mikefarah/yq@v4
+      - uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4
       - name: Check that the built release still matches main
         env:
           SOURCE_SHA: ${{ github.sha }}
@@ -297,7 +315,7 @@ jobs:
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           if ! git diff --quiet "$SOURCE_SHA" origin/main -- \
             Cargo.toml Cargo.lock crates migrations deploy/helm .dockerignore \
-            compose.yaml compose.kafka.yaml scripts .github/workflows/application.yml; then
+            compose.yaml compose.kafka.yaml scripts .github/workflows/application.yml .github/workflows/security.yml .trivyignore.yaml; then
             echo '::error::Release inputs changed after this build. Run the application workflow on current main.'
             exit 1
           fi

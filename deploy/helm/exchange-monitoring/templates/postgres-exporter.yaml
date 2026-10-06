@@ -19,6 +19,7 @@ spec:
         {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres-exporter
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: postgres-exporter
           image: {{ .Values.postgresExporter.image }}

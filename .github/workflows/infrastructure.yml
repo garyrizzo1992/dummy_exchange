@@ -10,12 +10,22 @@ on:
     paths:
       - provisioning/**
       - deploy/argocd/**
+      - deploy/security/**
+      - scripts/install-security-tools.py
+      - scripts/check-workflow-security.py
+      - .trivyignore.yaml
+      - .github/workflows/security.yml
       - .github/workflows/infrastructure.yml
   push:
     branches: [main]
     paths:
       - provisioning/**
       - deploy/argocd/**
+      - deploy/security/**
+      - scripts/install-security-tools.py
+      - scripts/check-workflow-security.py
+      - .trivyignore.yaml
+      - .github/workflows/security.yml
       - .github/workflows/infrastructure.yml
   workflow_dispatch: # Use the Actions tab to run it manually.
 
@@ -29,6 +39,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+
   # Pull requests stop here. This job doesn't need OCI credentials or state.
   validate:
     runs-on: ubuntu-24.04
@@ -37,8 +50,8 @@ jobs:
       run:
         working-directory: provisioning/terraform
     steps:
-      - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.16.4
           # Run Terraform directly; the optional wrapper needs system Node.js.
@@ -52,7 +65,7 @@ jobs:
   # Only trusted main code runs on our private OCI runner and changes resources.
   apply:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: validate
+    needs: [validate, security]
     runs-on: [self-hosted, linux, x64, oci-dev]
     timeout-minutes: 60
     environment: dev
@@ -76,8 +89,8 @@ jobs:
       # Free-plan DNS/tunnel management; also used transiently by Ansible.
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.16.4
           terraform_wrapper: false

@@ -107,6 +107,12 @@ spec:
             runAsUser: 65534
             capabilities: {drop: [ALL]}
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-node-exporter
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -127,6 +133,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       nodeSelector: {kubernetes.io/os: linux}
+      serviceAccountName: {{ $name }}-node-exporter
       hostPID: true
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet

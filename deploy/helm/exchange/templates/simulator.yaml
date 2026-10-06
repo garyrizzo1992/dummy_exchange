@@ -35,6 +35,7 @@ spec:
         {{- include "exchange.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: simulator
     spec:
+      automountServiceAccountToken: false
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       {{- if .Values.tracing.enabled }}

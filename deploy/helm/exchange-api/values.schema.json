@@ -211,6 +211,33 @@
               }
             }
           }
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "user": {
+              "type": "string",
+              "minLength": 1
+            },
+            "secret": {
+              "type": "object",
+              "required": [
+                "name",
+                "key"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -311,6 +338,18 @@
     },
     "trustCloudflare": {
       "type": "boolean"
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
     }
   },
   "allOf": [

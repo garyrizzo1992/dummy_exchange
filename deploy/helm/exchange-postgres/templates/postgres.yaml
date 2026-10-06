@@ -41,9 +41,19 @@ spec:
         {{- include "exchange-postgres.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
           image: {{ .Values.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
           imagePullPolicy: IfNotPresent
           args: ["-c", {{ printf "max_connections=%v" .Values.maxConnections | quote }}]
           ports:

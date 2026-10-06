@@ -29,6 +29,8 @@ resources:
     memory: 256Mi
 migrations:
   enabled: true
+  # Override user and secret here before switching runtime credentials.
+  database: {}
   activeDeadlineSeconds: 300
   resources:
     requests:
@@ -59,3 +61,6 @@ tracing:
 
 trustCloudflare: false
 corsAllowedOrigins: []
+
+networkPolicy:
+  enabled: true

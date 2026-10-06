@@ -4,6 +4,12 @@ Reviewed on 6 October 2026 against commit `1b36b76` and the live development dep
 
 The basic API protections held up in these tests, but there are changes to make before promoting the demo widely. The main ones are old TLS support, vulnerable components, database permissions and deployment safeguards.
 
+## Follow-up on 7 October 2026
+
+Remediation is tracked separately in [security-follow-up.md](security-follow-up.md) and [the rollout runbook](security-rollout.md). Live checks now reject TLS 1.0/1.1, accept TLS 1.2 and return API/frontend 200 responses with short-lived HSTS. Grafana and Argo redirect unauthenticated requests to Cloudflare Access. Unrelated pods cannot connect to API/PostgreSQL, while restricted operator pods can. A private off-node dump was downloaded, checksum-verified and restored into a disposable database in 16 seconds; the fixture was removed. These findings update the corresponding observations below; the original audit remains historical evidence.
+
+The patched local dependency graph has no active MySQL/RSA dependency, and the high/critical dependency scan passed with narrowly scoped, expiring exceptions. Runtime-role tests and Kubernetes schema checks passed. Application image replacement scans, remaining third-party component advisories, operator Access login and application rollback rehearsal still need their own evidence. Do not read the original running-image inventory as a scan of the replacement application images.
+
 ## Scope
 
 This is a focused review of ten common attack areas, guided by [OWASP Top 10](https://top10.owasp.org/2025/). It is not a claim to have tested every vulnerability or a ranking of attack frequency for this project.

@@ -4,3 +4,7 @@ service:
   type: NodePort
   port: 3000
   nodePort: 30000
+
+# Local NodePort and operator workflows do not pass through the Tunnel.
+networkPolicy:
+  enabled: false

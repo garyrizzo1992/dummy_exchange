@@ -29,6 +29,14 @@ managed_ssh_connection() {
     echo "Running node $node_name was not found." >&2
     return 1
   }
+  if [[ "${SSH_CONNECTION_MODE:-bastion}" == "private" ]]; then
+    local private_ip
+    private_ip="$(oci compute instance list-vnics --instance-id "$node" --all \
+      --query 'data[?"is-primary"==`true`]|[0]."private-ip"' --raw-output)"
+    [[ -n "$private_ip" && "$private_ip" != "null" ]] || return 1
+    printf 'none\n22\nopc@%s\n' "$private_ip"
+    return
+  fi
   # RUNNING instances can precede the first Oracle Cloud Agent heartbeat.
   local deadline=$((SECONDS + 600))
   while true; do

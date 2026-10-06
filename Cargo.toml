@@ -14,12 +14,12 @@ axum = { version = "0.8", features = ["macros", "ws"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
-jsonwebtoken = "9"
+jsonwebtoken = { version = "10.3", default-features = false, features = ["aws_lc_rs"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
-opentelemetry = "0.31"
-opentelemetry_sdk = "0.31"
-opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32.1"
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
 rand = "0.9"
 rdkafka = { version = "0.39", default-features = false, features = ["cmake-build", "tokio"] }
 rust_decimal = { version = "1", features = ["serde-with-str"] }
@@ -27,11 +27,11 @@ rust_decimal_macros = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "rust_decimal", "migrate"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "rust_decimal", "migrate", "macros"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 tower-http = { version = "0.6", features = ["trace", "request-id", "cors", "fs"] }
 tracing = "0.1"
-tracing-opentelemetry = "0.32"
+tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }

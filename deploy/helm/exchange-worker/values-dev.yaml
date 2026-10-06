@@ -10,3 +10,8 @@ kafka:
 autoscaling:
   enabled: true
   maxReplicas: 2
+
+# Runtime DML credentials are independent from the migration administrator.
+database:
+  user: exchange_app
+  secret: {name: dummy-exchange-runtime-secrets, key: postgres-password}

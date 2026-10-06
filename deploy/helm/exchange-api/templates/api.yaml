@@ -1,3 +1,6 @@
+{{- if and .Values.trustCloudflare (not .Values.networkPolicy.enabled) -}}
+{{- fail "trustCloudflare requires API network isolation" -}}
+{{- end -}}
 {{- $name := include "exchange-api.fullname" . -}}
 apiVersion: v1
 kind: Service
@@ -43,6 +46,7 @@ spec:
         {{- include "exchange-api.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
+      automountServiceAccountToken: false
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       {{- if .Values.tracing.enabled }}

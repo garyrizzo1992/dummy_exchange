@@ -49,6 +49,9 @@ def main():
         docs = validate(run(args.helm, 'template', release, str(location), '--namespace', 'dummy-exchange', *options))
         for doc in docs:
             if doc['kind'] in ('Deployment', 'StatefulSet', 'DaemonSet', 'Job'):
+                pod = doc['spec']['template']['spec']
+                if doc['metadata']['labels'].get('app.kubernetes.io/component') not in ('prometheus', 'kube-state-metrics', 'alloy'):
+                    assert pod.get('automountServiceAccountToken') is False, ('Unneeded Kubernetes API token', identity(doc))
                 for container in doc['spec']['template']['spec']['containers']:
                     resources = container.get('resources', {})
                     assert all(resources.get(k, {}).get(r) for k in ('requests', 'limits') for r in ('cpu', 'memory')), identity(doc)
@@ -96,6 +99,8 @@ def main():
             trader_enabled = True
             if chart == "exchange" and profile:
                 trader_enabled = yaml.safe_load((CHARTS/chart/f"values-{profile}.yaml").read_text()).get("traders",{}).get("enabled",True)
+            if chart == 'exchange-postgres' and profile == 'dev':
+                components.discard('credential-provisioner')  # Credential provisioning precedes business migrations.
             expected_components = expected[chart] - ({"trader"} if chart == "exchange" and not trader_enabled else set())
             if chart == 'exchange' and profile:
                 trader_scaling = yaml.safe_load((CHARTS/chart/f'values-{profile}.yaml').read_text()).get('traders',{}).get('autoscaling',{}).get('enabled',False)
@@ -181,12 +186,23 @@ def main():
     assert not any(d['metadata']['name'].endswith(('-loki', '-alloy', '-kube-state-metrics', '-node-exporter')) for d in minimal)
     minimal_config = next(d for d in minimal if d['kind'] == 'ConfigMap' and 'prometheus.yml' in d['data'])
     assert not any(j['job_name'] in ('cadvisor', 'kubelet', 'loki', 'alloy', 'node-exporter', 'kube-state-metrics') for j in yaml.safe_load(minimal_config['data']['prometheus.yml'])['scrape_configs'])
+    separate_credentials = render('exchange-api', overrides=('database.user=exchange_app', 'database.secret.name=runtime', 'migrations.database.user=postgres', 'migrations.database.secret.name=admin', 'migrations.database.secret.key=postgres-password'))
+    for doc in separate_credentials:
+        if doc['kind'] in ('Deployment', 'Job'):
+            env = doc['spec']['template']['spec']['containers'][0]['env']
+            assert next(e['value'] for e in env if e['name'] == 'PGUSER') == ('postgres' if doc['kind'] == 'Job' else 'exchange_app')
+            assert next(e['valueFrom']['secretKeyRef']['name'] for e in env if e['name'] == 'PGPASSWORD') == ('admin' if doc['kind'] == 'Job' else 'runtime')
+    role_docs = render('exchange-postgres', overrides=('runtimeRole.enabled=true',))
+    role_job = next(d for d in role_docs if d['kind'] == 'Job')
+    assert role_job['spec']['template']['spec']['automountServiceAccountToken'] is False
+    assert next(d for d in role_docs if d['kind']=='ConfigMap')['data']['runtime-role.sql']
     bridge = render('exchange-postgres', 'dev', overrides=('externalSecrets.legacyKeys.jwt-secret=old-jwt', 'externalSecrets.legacyKeys.grafana-admin-password=old-grafana'))
     assert len(next(d for d in bridge if d['kind'] == 'ExternalSecret')['spec']['data']) == 3
     for chart, setting in [('exchange-api', 'replicas=0'), ('exchange-worker', 'replicas=0'),
                            ('exchange', 'database.port=0'),
                            ('exchange-api', 'externalSecrets.enabled=true')]:
         run(args.helm, 'template', 'test', str(CHARTS / chart), '--set', setting, success=False)
+    run(args.helm, 'template', 'test', str(CHARTS / 'exchange-api'), '--set', 'trustCloudflare=true', '--set', 'networkPolicy.enabled=false', success=False)
     render('exchange-tunnel')
     render('exchange-tunnel', overrides=('enabled=true',))
     for chart, overrides, kind, suffix in [

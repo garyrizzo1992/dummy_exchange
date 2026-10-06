@@ -14,7 +14,14 @@ resource "oci_identity_policy" "ci_runner" {
   name           = "${var.application}-${var.environment}-ci-runner"
   description    = "CI manages project resources and the development state bucket"
   statements = [
-    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage all-resources in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage virtual-network-family in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage instance-family in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage volume-family in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage bastion-family in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage vaults in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage keys in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to manage object-family in compartment id ${oci_identity_compartment.dummy_exchange.id}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to read objectstorage-namespaces in tenancy",
     "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to inspect compartments in tenancy",
     "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to read dynamic-groups in tenancy",
     "Allow dynamic-group ${oci_identity_dynamic_group.ci_runner[0].name} to read policies in tenancy",

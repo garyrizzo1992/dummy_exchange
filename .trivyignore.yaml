@@ -1,0 +1,15 @@
+vulnerabilities:
+  - id: RUSTSEC-2023-0071
+    paths: [Cargo.lock]
+    purls: [pkg:cargo/rsa@0.9.10]
+    expired_at: 2026-11-06
+    statement: Optional SQLx MySQL lockfile entry; CI asserts RSA is absent from the resolved dependency tree. See docs/security-review.md.
+  - id: CVE-2023-49092
+    paths: [Cargo.lock]
+    purls: [pkg:cargo/rsa@0.9.10]
+    expired_at: 2026-11-06
+    statement: Alias of RUSTSEC-2023-0071; same inactive dependency and CI check.
+  - id: CVE-2023-45853
+    purls: [pkg:deb/debian/zlib1g]
+    expired_at: 2026-11-06
+    statement: Debian Bookworm zlib1g does not build the affected MiniZip code; https://security-tracker.debian.org/tracker/CVE-2023-45853. Applies only to the Debian zlib1g package.

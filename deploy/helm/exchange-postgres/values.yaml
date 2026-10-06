@@ -30,3 +30,14 @@ externalSecrets:
   secretName: ''
   # Temporary bridge when transferring the old shared Secret; empty for new clusters.
   legacyKeys: {}
+
+networkPolicy:
+  enabled: true
+
+runtimeRole:
+  enabled: false
+  secret: {name: dummy-exchange-runtime-secrets, key: postgres-password}
+  vaultSecretName: ""
+
+  monitorSecret: {name: dummy-exchange-monitor-postgres-secrets, key: postgres-password}
+  monitorVaultSecretName: ""

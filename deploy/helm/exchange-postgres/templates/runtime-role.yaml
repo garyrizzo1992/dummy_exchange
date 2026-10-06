@@ -1,0 +1,66 @@
+{{- if and .Values.enabled .Values.runtimeRole.enabled }}
+{{- $name := include "exchange-postgres.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-runtime-role
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+data:
+  runtime-role.sql: |
+    {{- .Files.Get "files/runtime-role.sql" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-runtime-role
+  labels:
+    {{- include "exchange-postgres.labels" . | nindent 4 }}
+    app.kubernetes.io/component: credential-provisioner
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "exchange-postgres.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: credential-provisioner
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: runtime-role
+          image: {{ .Values.image }}
+          command: [psql]
+          args: ["-v", "ON_ERROR_STOP=1", "-f", "/sql/runtime-role.sql"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          env:
+            {{- include "exchange-postgres.databaseEnv" . | nindent 12 }}
+            - name: RUNTIME_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeRole.secret.name }}
+                  key: {{ .Values.runtimeRole.secret.key }}
+            - name: MONITOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeRole.monitorSecret.name }}
+                  key: {{ .Values.runtimeRole.monitorSecret.key }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: sql, mountPath: /sql, readOnly: true}
+      volumes:
+        - name: sql
+          configMap: {name: {{ $name }}-runtime-role}
+{{- end }}

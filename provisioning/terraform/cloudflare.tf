@@ -67,6 +67,32 @@ resource "cloudflare_zone_setting" "https" {
   value      = "on"
 }
 
+# Zone-wide: reject legacy TLS for all proxied hostnames. HSTS requires a
+# separate domain review before enabling it.
+resource "cloudflare_zone_setting" "minimum_tls" {
+  count      = var.cloudflare_enabled ? 1 : 0
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
+
+# Start with a five-minute HSTS lifetime after checking the zone's HTTPS hosts.
+# Do not include unrelated subdomains or request browser preload enrollment.
+resource "cloudflare_zone_setting" "hsts" {
+  count      = var.cloudflare_enabled && var.cloudflare_hsts_enabled ? 1 : 0
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      max_age            = 300
+      include_subdomains = false
+      preload            = false
+      nosniff            = true
+    }
+  }
+}
+
 resource "cloudflare_dns_record" "services" {
   for_each   = var.cloudflare_enabled ? local.active_service_routes : {}
   zone_id    = var.cloudflare_zone_id

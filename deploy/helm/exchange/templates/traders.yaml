@@ -41,6 +41,7 @@ spec:
         {{- include "exchange.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: trader
     spec:
+      automountServiceAccountToken: false
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists

@@ -9,3 +9,8 @@ externalSecrets:
   secretName: dummy-exchange-dev-postgres-password
 persistence:
   storageClass: local-path
+
+runtimeRole:
+  enabled: true
+  vaultSecretName: dummy-exchange-dev-runtime-postgres-password
+  monitorVaultSecretName: dummy-exchange-dev-monitor-postgres-password

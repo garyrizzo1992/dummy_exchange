@@ -14,13 +14,15 @@ frontend_hostname        = "exchange.garyrizzo.dev"
 
 cloudflare_service_routes = {
   grafana = {
-    hostname = "grafana.garyrizzo.dev"
-    service  = "http://dummy-exchange-dev-dummy-exchange-grafana.dummy-exchange.svc.cluster.local:3000"
+    hostname      = "grafana.garyrizzo.dev"
+    service       = "http://dummy-exchange-dev-dummy-exchange-grafana.dummy-exchange.svc.cluster.local:3000"
+    access_emails = ["1992rizzogary@gmail.com"]
   }
   argocd = {
     hostname      = "argocd.garyrizzo.dev"
     service       = "https://argocd-server.argocd.svc.cluster.local:443"
     no_tls_verify = true # Argo CD uses a self-signed certificate inside the dev cluster.
+    access_emails = ["1992rizzogary@gmail.com"]
   }
   prometheus = {
     hostname      = "prometheus.garyrizzo.dev"
@@ -29,5 +31,6 @@ cloudflare_service_routes = {
   }
 }
 
-# Cloudflare Access protects Prometheus with email-code login.
+# Cloudflare Access protects operator interfaces with email-code login.
 cloudflare_access_enabled = true
+cloudflare_hsts_enabled   = true

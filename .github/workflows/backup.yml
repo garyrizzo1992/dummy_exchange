@@ -1,0 +1,39 @@
+name: Back up and restore PostgreSQL
+on:
+  schedule:
+    - cron: '43 2 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, oci-dev]
+    timeout-minutes: 30
+    environment: dev
+    env:
+      OCI_CLI_AUTH: instance_principal
+      OCI_TENANCY_OCID: ${{ vars.OCI_TENANCY_OCID }}
+      SSH_CONNECTION_MODE: private
+      BACKUP_NAMESPACE: ax6utpsobpgy
+      BACKUP_BUCKET: dummy-exchange-dev-postgres-backups
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Configure transient SSH credentials
+        env:
+          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
+        run: |
+          echo /usr/local/bin >> "$GITHUB_PATH"
+          umask 077
+          printf '%s\n' "$CI_SSH_PRIVATE_KEY" | tr -d '\r' > "$RUNNER_TEMP/backup_id_ed25519"
+          echo "SSH_KEY_PATH=$RUNNER_TEMP/backup_id_ed25519" >> "$GITHUB_ENV"
+      - name: Upload private backup and rehearse restoration
+        run: bash scripts/backup-postgres.sh
+      - name: Remove transient SSH credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/backup_id_ed25519"

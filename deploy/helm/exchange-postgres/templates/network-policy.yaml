@@ -1,0 +1,29 @@
+{{- if and .Values.enabled .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "exchange-postgres.fullname" . }}-postgres
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    {{- include "exchange-postgres.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "exchange-postgres.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "exchange-postgres.selectorLabels" . | nindent 14 }}
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, migration, credential-provisioner, worker, simulator, trader, postgres-exporter, backup]
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: exchange-ops}
+      ports: [{protocol: TCP, port: 5432}]
+{{- end }}

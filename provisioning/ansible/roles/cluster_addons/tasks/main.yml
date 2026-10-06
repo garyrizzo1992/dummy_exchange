@@ -24,8 +24,13 @@
   failed_when: false
 
 - name: Install development storage
-  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.32/deploy/local-path-storage.yaml
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
   when: local_storage.rc != 0
+
+# Keep existing StorageClass, ConfigMap paths and PVCs unchanged on upgrades.
+- name: Upgrade the existing storage provisioner
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf set image deployment/local-path-provisioner -n local-path-storage local-path-provisioner=docker.io/rancher/local-path-provisioner:v0.0.36
+  when: local_storage.rc == 0
 
 - name: Wait for the storage provisioner
   ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf rollout status deployment/local-path-provisioner -n local-path-storage --timeout=5m
@@ -37,18 +42,17 @@
 
 - name: Download Helm
   ansible.builtin.get_url:
-    url: https://get.helm.sh/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
-    dest: /tmp/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
-    checksum: sha256:https://get.helm.sh/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz.sha256sum
+    url: https://get.helm.sh/helm-v3.22.0-linux-{{ helm_arch }}.tar.gz
+    dest: /tmp/helm-v3.22.0-linux-{{ helm_arch }}.tar.gz
+    checksum: sha256:https://get.helm.sh/helm-v3.22.0-linux-{{ helm_arch }}.tar.gz.sha256sum
     mode: '0644'
 
 - name: Extract Helm
   ansible.builtin.unarchive:
-    src: /tmp/helm-v3.17.3-linux-{{ helm_arch }}.tar.gz
+    src: /tmp/helm-v3.22.0-linux-{{ helm_arch }}.tar.gz
     dest: /usr/local/bin
     remote_src: true
     extra_opts: [--strip-components=1]
-    creates: /usr/local/bin/helm
 
 - name: Configure the External Secrets Helm repository
   ansible.builtin.command: /usr/local/bin/helm repo add external-secrets https://charts.external-secrets.io --force-update
@@ -276,3 +280,12 @@
 - name: Configure public access through the free Cloudflare Tunnel
   ansible.builtin.include_tasks: cloudflare.yml
   when: cloudflare_enabled | default(false) | bool
+
+- name: Copy exchange admission safeguards
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../deploy/security/admission.yaml"
+    dest: /tmp/exchange-admission.yaml
+    mode: '0644'
+
+- name: Apply exchange admission safeguards
+  ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f /tmp/exchange-admission.yaml

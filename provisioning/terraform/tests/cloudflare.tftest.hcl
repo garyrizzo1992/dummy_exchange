@@ -41,7 +41,7 @@ run "private_cluster_without_cloudflare" {
     error_message = "Pages must remain opt-in."
   }
   assert {
-    condition     = length(cloudflare_dns_record.api) == 0 && length(cloudflare_zero_trust_tunnel_cloudflared.api) == 0
+    condition     = length(cloudflare_dns_record.api) == 0 && length(cloudflare_zero_trust_tunnel_cloudflared.api) == 0 && length(cloudflare_zone_setting.minimum_tls) == 0
     error_message = "Cloudflare is opt-in and must not expose an unconfigured cluster."
   }
 }
@@ -93,6 +93,10 @@ run "free_tunnel_and_dns" {
   assert {
     condition     = cloudflare_zone_setting.https[0].value == "on"
     error_message = "Visitors must be redirected to HTTPS."
+  }
+  assert {
+    condition     = cloudflare_zone_setting.minimum_tls[0].setting_id == "min_tls_version" && cloudflare_zone_setting.minimum_tls[0].value == "1.2"
+    error_message = "Proxied hostnames must reject TLS versions older than 1.2."
   }
   assert {
     condition     = !oci_core_instance.control_plane.create_vnic_details[0].assign_public_ip && !oci_core_instance.worker.create_vnic_details[0].assign_public_ip

@@ -1,5 +1,11 @@
 # OCI authentication
 
+variable "cloudflare_hsts_enabled" {
+  description = "Enable short-lived HSTS only after checking HTTPS for the zone's proxied hosts."
+  type        = bool
+  default     = false
+}
+
 variable "region" {
   description = "OCI region in which this environment is managed."
   type        = string

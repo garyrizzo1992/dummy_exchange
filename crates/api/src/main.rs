@@ -168,9 +168,13 @@ fn authenticated_user(headers: &HeaderMap, app: &AppState) -> Result<Uuid, Statu
     let token = authorization
         .strip_prefix("Bearer ")
         .ok_or(StatusCode::UNAUTHORIZED)?;
+    validate_token(token, &app.jwt_secret)
+}
+
+fn validate_token(token: &str, secret: &str) -> Result<Uuid, StatusCode> {
     let decoded = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(app.jwt_secret.as_bytes()),
+        &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?;
@@ -595,4 +599,59 @@ async fn simulation(State(app): State<AppState>) -> Result<Json<serde_json::Valu
     Ok(Json(
         serde_json::json!({"traders":row.get::<i64,_>("total"),"active":row.get::<i64,_>("active")}),
     ))
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+    use jsonwebtoken::Algorithm;
+
+    #[test]
+    fn accepts_valid_hs256_and_rejects_invalid_claims_and_signatures() {
+        let secret = "test-only-jwt-secret-at-least-32-bytes";
+        let user = Uuid::new_v4();
+        let exp = (chrono::Utc::now().timestamp() + 3600) as usize;
+        let sign = |claims: serde_json::Value, algorithm: Algorithm, key: &str| {
+            encode(
+                &Header::new(algorithm),
+                &claims,
+                &EncodingKey::from_secret(key.as_bytes()),
+            )
+            .unwrap()
+        };
+        let claims = serde_json::json!({"sub": user.to_string(), "exp": exp});
+        let valid = sign(claims.clone(), Algorithm::HS256, secret);
+        assert_eq!(validate_token(&valid, secret), Ok(user));
+        let invalid = [
+            sign(claims.clone(), Algorithm::HS256, "wrong-signing-key"),
+            sign(claims, Algorithm::HS384, secret),
+            sign(
+                serde_json::json!({"sub": user.to_string(), "exp": 1}),
+                Algorithm::HS256,
+                secret,
+            ),
+            sign(
+                serde_json::json!({"sub": user.to_string()}),
+                Algorithm::HS256,
+                secret,
+            ),
+            sign(
+                serde_json::json!({"sub": user.to_string(), "exp": "never"}),
+                Algorithm::HS256,
+                secret,
+            ),
+            sign(
+                serde_json::json!({"sub": "invalid-uuid", "exp": exp}),
+                Algorithm::HS256,
+                secret,
+            ),
+            "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhZG1pbiJ9.".to_owned(),
+        ];
+        for token in invalid {
+            assert_eq!(
+                validate_token(&token, secret),
+                Err(StatusCode::UNAUTHORIZED)
+            );
+        }
+    }
 }
