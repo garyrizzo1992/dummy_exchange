@@ -10,7 +10,7 @@ BIN = Path(os.environ.get('EXCHANGE_BIN_DIR', ROOT/'target/debug'))
 SUFFIX = '.exe' if os.name == 'nt' else ''
 ENV = dict(os.environ, PGHOST='127.0.0.1', PGPORT='25432', PGUSER='postgres',
            PGDATABASE='dummy_exchange', PGPASSWORD='test-only-private-password',
-           PGSSLMODE='disable', KAFKA_BOOTSTRAP_SERVERS='localhost:19092,localhost:19093,localhost:19094',
+           PGSSLMODE='disable', KAFKA_BOOTSTRAP_SERVERS='127.0.0.1:19092,127.0.0.1:19093,127.0.0.1:19094',
            KAFKA_CONSUMER_GROUP='verification-'+str(uuid.uuid4()), RUST_LOG='info',
            OTEL_EXPORTER_OTLP_ENDPOINT='http://127.0.0.1:4318')
 processes = []
