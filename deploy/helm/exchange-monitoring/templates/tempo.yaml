@@ -76,6 +76,11 @@ spec:
         - name: tempo
           image: {{ .Values.tracing.image }}
           args: ["-config.file=/etc/tempo/tempo.yaml"]
+          {{- if .Values.tracing.goMemoryLimit }}
+          env:
+            - name: GOMEMLIMIT
+              value: {{ .Values.tracing.goMemoryLimit | quote }}
+          {{- end }}
           ports:
             - {name: http, containerPort: 3200}
             - {name: otlp, containerPort: 4317}

@@ -550,6 +550,10 @@
         },
         "resources": {
           "type": "object"
+        },
+        "goMemoryLimit": {
+          "type": "string",
+          "pattern": "^$|^[0-9]+(KiB|MiB|GiB)$"
         }
       },
       "required": [

@@ -17,8 +17,9 @@ logging:
     storageClass: local-path
 
 tracing:
+  goMemoryLimit: 512MiB
   resources:
     requests: {cpu: 100m, memory: 256Mi}
-    limits: {cpu: '1', memory: 1536Mi}
+    limits: {cpu: '1', memory: 768Mi}
   persistence:
     storageClass: local-path
