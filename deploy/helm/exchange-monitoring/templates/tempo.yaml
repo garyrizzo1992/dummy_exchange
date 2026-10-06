@@ -16,6 +16,8 @@ data:
           protocols:
             grpc:
               endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
     ingester:
       max_block_duration: 5m
     compactor:
@@ -41,6 +43,7 @@ spec:
   ports:
     - {name: http, port: 3200, targetPort: http}
     - {name: otlp, port: 4317, targetPort: otlp}
+    - {name: otlp-http, port: 4318, targetPort: otlp-http}
   selector:
     {{- include "exchange-monitoring.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: tempo
@@ -62,7 +65,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ toYaml .Values.tracing | sha256sum }}
+        checksum/config: {{ printf "otlp-http-v1:%s" (toYaml .Values.tracing) | sha256sum }}
       labels:
         {{- include "exchange-monitoring.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: tempo
@@ -84,6 +87,7 @@ spec:
           ports:
             - {name: http, containerPort: 3200}
             - {name: otlp, containerPort: 4317}
+            - {name: otlp-http, containerPort: 4318}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: ["ALL"]}

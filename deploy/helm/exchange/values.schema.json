@@ -232,6 +232,9 @@
         },
         "resources": {
           "type": "object"
+        },
+        "tracingEndpoint": {
+          "type": "string"
         }
       },
       "required": [

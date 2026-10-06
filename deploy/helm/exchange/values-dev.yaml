@@ -8,6 +8,7 @@ tracing:
 # Enabled atomically with the image that supports trader mode.
 traders:
   enabled: true
+  tracingEndpoint: http://dummy-exchange-dev-dummy-exchange-tempo:4318
   # Bound development load to the capacity of the shared database node.
   autoscaling:
     enabled: true

@@ -40,6 +40,8 @@ traders:
   enabled: true
   replicas: 10
   intervalMs: 2000
+  # Optional shared OTLP HTTP receiver, replacing one collector per bot.
+  tracingEndpoint: ''
   resources:
     requests: {cpu: 10m, memory: 16Mi}
     limits: {cpu: 250m, memory: 128Mi}

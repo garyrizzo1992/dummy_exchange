@@ -114,6 +114,14 @@ def main():
             assert workloads['trader']['metadata']['annotations']['argocd.argoproj.io/sync-wave'] == '1'
             assert workloads['trader']['spec']['podManagementPolicy'] == 'Parallel'
             assert not workloads['trader']['spec'].get('volumeClaimTemplates')
+            if profile == 'dev':
+                containers = workloads['trader']['spec']['template']['spec']['containers']
+                assert [c['name'] for c in containers] == ['trader']
+                endpoint = next(e['value'] for e in containers[0]['env'] if e['name'] == 'OTEL_EXPORTER_OTLP_ENDPOINT')
+                assert endpoint == f'http://{prefix}-tempo:4318'
+                tempo = workloads['tempo']['spec']['template']['spec']['containers'][0]
+                assert {'name': 'otlp-http', 'containerPort': 4318} in tempo['ports']
+
         job = workloads['migration']
         assert job['metadata']['name'] == f'{prefix}-migrate'
         assert job['metadata']['annotations']['argocd.argoproj.io/hook'] == 'Sync'

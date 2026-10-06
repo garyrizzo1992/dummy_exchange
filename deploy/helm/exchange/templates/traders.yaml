@@ -57,7 +57,7 @@ spec:
                     app.kubernetes.io/component: trader
       securityContext:
         seccompProfile: { type: RuntimeDefault }
-      {{- if .Values.tracing.enabled }}
+      {{- if and .Values.tracing.enabled (not .Values.traders.tracingEndpoint) }}
       volumes:
         - name: otel-config
           configMap: {name: {{ $name }}-exchange-otel}
@@ -79,7 +79,7 @@ spec:
           env:
             {{- if .Values.tracing.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://127.0.0.1:4318
+              value: {{ default "http://127.0.0.1:4318" .Values.traders.tracingEndpoint | quote }}
             {{- end }}
             - name: RUST_LOG
               value: info
@@ -108,7 +108,7 @@ spec:
           resources:
             {{- toYaml .Values.traders.resources | nindent 12 }}
 
-        {{- if .Values.tracing.enabled }}
+        {{- if and .Values.tracing.enabled (not .Values.traders.tracingEndpoint) }}
         - name: otel-collector
           image: {{ .Values.tracing.collectorImage }}
           args: ["--config=/etc/otel/config.yaml"]

@@ -15,7 +15,8 @@ use tokio::time::{Duration, sleep};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-#[tokio::main]
+// Bots perform sequential asynchronous I/O; avoid a thread per host CPU.
+#[tokio::main(worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     let _telemetry =

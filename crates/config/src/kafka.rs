@@ -46,6 +46,9 @@ impl Publisher {
             .map(|brokers| {
                 let producer = ClientConfig::new()
                     .set("bootstrap.servers", brokers)
+                    // Each bot awaits delivery before sending its next command.
+                    .set("queue.buffering.max.messages", "1024")
+                    .set("queue.buffering.max.kbytes", "1024")
                     .set("enable.idempotence", "true")
                     .set("acks", "all")
                     .set("message.timeout.ms", "10000")
