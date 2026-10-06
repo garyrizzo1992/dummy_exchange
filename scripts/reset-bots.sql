@@ -15,15 +15,19 @@ CREATE UNIQUE INDEX ON reset_bot_orders(id);
 DO $$ BEGIN
     IF EXISTS (
         SELECT 1 FROM fills f JOIN orders m ON m.id=f.maker_order_id JOIN orders t ON t.id=f.taker_order_id
-        WHERE (m.id IN (SELECT id FROM reset_bot_orders) OR t.id IN (SELECT id FROM reset_bot_orders))
+        WHERE (m.user_id IN (SELECT old_id FROM reset_bot_accounts) OR t.user_id IN (SELECT old_id FROM reset_bot_accounts))
         AND (m.user_id NOT IN (SELECT old_id FROM reset_bot_accounts) AND NOT m.is_system
              OR t.user_id NOT IN (SELECT old_id FROM reset_bot_accounts) AND NOT t.is_system)
     ) THEN RAISE EXCEPTION 'Bot reset would remove a human counterparty trade'; END IF;
 END $$;
-DELETE FROM fills WHERE maker_order_id IN (SELECT id FROM reset_bot_orders) OR taker_order_id IN (SELECT id FROM reset_bot_orders);
-DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id FROM reset_bot_orders) OR aggregate_id IN (SELECT old_id FROM reset_bot_accounts);
-DELETE FROM audit_log WHERE actor_id IN (SELECT old_id FROM reset_bot_accounts) OR entity_id IN (SELECT id FROM reset_bot_orders);
-DELETE FROM orders WHERE id IN (SELECT id FROM reset_bot_orders);
+-- Separate indexed joins avoid materialized OR/IN plans on large histories.
+DELETE FROM fills f USING reset_bot_orders b WHERE f.maker_order_id=b.id;
+DELETE FROM fills f USING reset_bot_orders b WHERE f.taker_order_id=b.id;
+DELETE FROM outbox_events e USING reset_bot_orders b WHERE e.aggregate_id=b.id;
+DELETE FROM outbox_events e USING reset_bot_accounts b WHERE e.aggregate_id=b.old_id;
+DELETE FROM audit_log a USING reset_bot_accounts b WHERE a.actor_id=b.old_id;
+DELETE FROM audit_log a USING reset_bot_orders b WHERE a.entity_id=b.id;
+DELETE FROM orders o USING reset_bot_orders b WHERE o.id=b.id;
 INSERT INTO users(id,email,password_hash,initial_equity_usd,profit_tracking_started_at,profit_baseline_source)
     SELECT b.new_id, 'trader-' || b.new_id || '@exchange.internal', 'disabled',
            100000 + COALESCE((SELECT sum(s.reference_price * v.quantity)
