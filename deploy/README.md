@@ -8,6 +8,14 @@ one sync, with a shared migration hook before their Deployments. See the
 
 ## OCI development cluster
 
+| Service | URL |
+| --- | --- |
+| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
+| Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
+| Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
+| Prometheus | [https://prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) |
+
 `argocd/dummy-exchange-dev.yaml` keeps the OCI kubeadm cluster in sync with main,
 using exact image digests and `values-dev.yaml`. Terraform and Ansible
 set up Argo CD and External Secrets. OCI Vault stores the PostgreSQL password,

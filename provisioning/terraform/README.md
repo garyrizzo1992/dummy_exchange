@@ -32,6 +32,16 @@ for Grafana, Argo CD, protected Prometheus and private management commands. The 
 allow tunnel and DNS management. Configure `CLOUDFLARE_API_TOKEN` in the GitHub
 `dev` environment for CI and drift checks.
 
+## Development service URLs
+
+| Service | URL |
+| --- | --- |
+| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
+| Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
+| Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
+| Prometheus | [https://prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) |
+
 ## Directory conventions
 
 This directory is one Terraform root module. Files group declarations by purpose;

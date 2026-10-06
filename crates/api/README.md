@@ -1,5 +1,7 @@
 # Exchange API
 
+Development URL: [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1).
+
 `exchange-api` handles the public HTTP requests. Users can log in, create
 simulated accounts, place or cancel orders, and check their balances and trades.
 The API reserves funds for orders and provides instruments, tickers and order books.

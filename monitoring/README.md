@@ -40,6 +40,11 @@ points and supply their credentials through your deployment's secret management.
 
 ## Kubernetes development troubleshooting
 
+| Service | Development URL |
+| --- | --- |
+| Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
+| Prometheus | [https://prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) |
+
 The `exchange-monitoring` Helm chart provisions three dashboards in Grafana's
 **Exchange** folder:
 

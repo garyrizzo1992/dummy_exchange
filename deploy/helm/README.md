@@ -162,6 +162,14 @@ Secrets; no Vault bridge is needed when External Secrets is disabled.
 
 ## Public access
 
+| Service | Development URL |
+| --- | --- |
+| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
+| Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
+| Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
+| Prometheus | [https://prometheus.garyrizzo.dev](https://prometheus.garyrizzo.dev) |
+
 Development publishes `https://api.garyrizzo.dev/v1` using Cloudflare's free
 Tunnel and DNS, managed by Terraform. Cloudflared runs in `ingress` and reaches
 the API ClusterIP Service directly on port 3000. No ingress controller, public
