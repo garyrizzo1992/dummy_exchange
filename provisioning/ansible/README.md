@@ -13,6 +13,16 @@ run it locally. On the private CI runner, `SSH_CONNECTION_MODE=private` uses
 private connections and instance identity. Terraform runs this wrapper
 automatically.
 
+Node preparation limits background `dnf-makecache` to 384 MiB of memory before
+throttling and 512 MiB before termination. Kubelet reserves 1 GiB for the OS and
+512 MiB for Kubernetes services, with pod eviction below 500 MiB of available
+memory. These settings prevent package-cache work and workload bursts from
+exhausting host memory. Apply only these settings to an existing cluster with:
+
+```bash
+bash ansible-playbook-wrapper.sh -i inventories/dev/terraform.ini playbooks/cluster.yml --tags node_resources
+```
+
 Bootstrap applies PostgreSQL and monitoring as independent Argo applications,
 waits for the database application to be `Synced` and `Healthy`, then applies
 the business application containing API, worker and exchange Helm sources.

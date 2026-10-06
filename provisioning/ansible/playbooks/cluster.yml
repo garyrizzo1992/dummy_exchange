@@ -4,6 +4,25 @@
   gather_facts: true
   become: true
   tasks:
+    - name: Create the package cache service override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnf-makecache.service.d
+        state: directory
+        mode: '0755'
+      tags: node_resources
+
+    # Background metadata refresh must not exhaust a Kubernetes node's memory.
+    - name: Bound background package cache memory
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dnf-makecache.service.d/memory.conf
+        content: |
+          [Service]
+          MemoryHigh=384M
+          MemoryMax=512M
+        mode: '0644'
+      notify: Reload systemd
+      tags: node_resources
+
     # Kubernetes requires swap to be disabled unless the kubelet is explicitly
     # configured to support it:
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#swap-configuration
@@ -135,6 +154,10 @@
         - containerd
         - kubelet
   handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
     # Restart containerd so its changed cgroup configuration takes effect.
     - name: Restart containerd
       ansible.builtin.service:
@@ -158,6 +181,40 @@
     # Uses the control plane's join command on the worker:
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#join-nodes
     - worker
+
+- name: Reserve memory for Kubernetes node services
+  hosts: control_plane:workers
+  become: true
+  tags: node_resources
+  tasks:
+    - name: Read the kubeadm-managed kubelet configuration
+      ansible.builtin.slurp:
+        src: /var/lib/kubelet/config.yaml
+      register: kubelet_node_config
+
+    # Preserve kubeadm settings while reducing pod allocatable memory and
+    # evicting workloads before the host reaches system-wide OOM.
+    # https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/
+    - name: Configure node memory reservations and eviction thresholds
+      ansible.builtin.copy:
+        dest: /var/lib/kubelet/config.yaml
+        content: >-
+          {{ (kubelet_node_config.content | b64decode | from_yaml)
+             | combine({'systemReserved': {'memory': '1Gi'},
+                        'kubeReserved': {'memory': '512Mi'},
+                        'evictionHard': {'memory.available': '500Mi',
+                                         'nodefs.available': '10%',
+                                         'nodefs.inodesFree': '5%',
+                                         'imagefs.available': '15%',
+                                         'imagefs.inodesFree': '5%'}}, recursive=True)
+             | to_nice_yaml }}
+        mode: '0644'
+      notify: Restart kubelet for node reservations
+  handlers:
+    - name: Restart kubelet for node reservations
+      ansible.builtin.service:
+        name: kubelet
+        state: restarted
 
 - name: Install Kubernetes networking and GitOps
   hosts: control_plane
