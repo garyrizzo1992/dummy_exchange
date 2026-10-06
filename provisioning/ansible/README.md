@@ -16,8 +16,10 @@ automatically.
 Bootstrap reads the local RPM database and skips DNF when the required node
 packages are already installed, avoiding unnecessary repository metadata refreshes.
 
-Node preparation limits background `dnf-makecache` to 384 MiB of memory before
-throttling and 512 MiB before termination. Kubelet reserves 1 GiB for the OS and
+Node preparation disables the automatic `dnf-makecache` timer to avoid large
+OCI metadata refreshes competing with workloads for disk I/O. It also limits
+manual starts of that service to 384 MiB before throttling and 512 MiB before
+termination. Kubelet reserves 1 GiB for the OS and
 512 MiB for Kubernetes services, with pod eviction below 500 MiB of available
 memory. These settings prevent package-cache work and workload bursts from
 exhausting host memory. Apply only these settings to an existing cluster with:

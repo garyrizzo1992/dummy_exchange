@@ -23,6 +23,20 @@
       notify: Reload systemd
       tags: node_resources
 
+    # OCI metadata is large enough to cause disk contention even under a memory cap.
+    - name: Disable automatic package metadata refresh
+      ansible.builtin.systemd_service:
+        name: dnf-makecache.timer
+        enabled: false
+        state: stopped
+      tags: node_resources
+
+    - name: Stop background package metadata refresh
+      ansible.builtin.systemd_service:
+        name: dnf-makecache.service
+        state: stopped
+      tags: node_resources
+
     # Kubernetes requires swap to be disabled unless the kubelet is explicitly
     # configured to support it:
     # https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#swap-configuration
