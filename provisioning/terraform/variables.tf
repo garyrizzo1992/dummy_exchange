@@ -122,6 +122,26 @@ variable "bastion_client_cidrs" {
 
 # Cloudflare public access
 
+variable "cloudflare_pages_enabled" {
+  description = "Create a direct-upload frontend Pages project and custom domain."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.cloudflare_pages_enabled || var.cloudflare_enabled
+    error_message = "Pages requires the Cloudflare account and zone configuration to be enabled."
+  }
+}
+
+variable "frontend_hostname" {
+  description = "Custom hostname for the static frontend."
+  type        = string
+  default     = "exchange.garyrizzo.dev"
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*\\.[a-z]{2,}$", var.frontend_hostname)) && !contains(concat([var.api_hostname], [for route in values(var.cloudflare_service_routes) : route.hostname]), var.frontend_hostname)
+    error_message = "Use a frontend hostname distinct from the API and tunnel service hostnames."
+  }
+}
+
 variable "cloudflare_enabled" {
   description = "Manage the free Cloudflare Tunnel, API DNS record and HTTPS redirect."
   type        = bool

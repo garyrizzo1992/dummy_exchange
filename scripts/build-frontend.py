@@ -30,6 +30,18 @@ def main():
     (output / 'index.html').write_text((frontend / 'index.html').read_text().replace('/v1/ui/', './'), encoding='utf-8')
     shutil.copyfile(frontend / 'style.css', output / 'style.css')
     shutil.copyfile(frontend / 'dist/pkg/bootstrap.js', output / 'pkg/bootstrap.js')
+    connect_sources = "'self'" + (f' {origin}' if origin else '')
+    (output / '_headers').write_text(
+        '/*\n'
+        '  Cache-Control: no-cache\n'
+        '  X-Content-Type-Options: nosniff\n'
+        '  X-Frame-Options: DENY\n'
+        '  Referrer-Policy: no-referrer\n'
+        "  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+        f"style-src 'self'; connect-src {connect_sources}; img-src 'self' data:; "
+        "frame-ancestors 'none'; base-uri 'none'; form-action 'self'\n",
+        encoding='utf-8',
+    )
     archive = shutil.make_archive(str(ROOT / 'target' / 'exchange-frontend-static'), 'zip', output)
     print(f'Static frontend: {output}')
     print(f'Archive: {archive}')

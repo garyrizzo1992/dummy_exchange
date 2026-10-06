@@ -10,3 +10,6 @@ externalSecrets:
 tracing:
   enabled: true
 trustCloudflare: true
+corsAllowedOrigins:
+  - https://exchange.garyrizzo.dev
+  - https://dummy-exchange-dev-frontend.pages.dev

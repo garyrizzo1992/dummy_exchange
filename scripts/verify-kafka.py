@@ -46,6 +46,10 @@ order={'client_order_id':str(uuid.uuid4()),'instrument':'BTC-USD','side':'buy',
        'order_type':'limit','quantity':'0.01','limit_price':'100'}
 place=dict(base,action='place',order=order)
 try:
+    # The preceding API checks run the Coinbase feed, then stop it. Broker
+    # startup can outlast its freshness window. Delivery checks use a simulated
+    # price fixture so they do not depend on that stopped external feed.
+    sql("UPDATE market_state SET price_source='simulated',updated_at=now()")
     sql("INSERT INTO users(id,email,password_hash) VALUES('"+user+"','"+identity+"@example.com','disabled');"
         "INSERT INTO accounts(user_id,currency,available) VALUES('"+user+"','USD',1000),('"+user+"','BTC',1);"
         "INSERT INTO simulated_traders(trader_key,user_id) VALUES('"+identity+"','"+user+"')")

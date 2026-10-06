@@ -4,6 +4,18 @@ output "api_url" {
   value = var.cloudflare_enabled ? "https://${var.api_hostname}/v1" : null
 }
 
+output "frontend_url" {
+  value = var.cloudflare_pages_enabled ? "https://${var.frontend_hostname}" : null
+}
+
+output "frontend_pages_project" {
+  value = try(cloudflare_pages_project.frontend[0].name, null)
+}
+
+output "frontend_pages_url" {
+  value = try("https://${cloudflare_pages_project.frontend[0].subdomain}", null)
+}
+
 output "cloudflare_tunnel_id" {
   description = "Non-secret ID. The connector token is fetched transiently by Ansible."
   value       = try(cloudflare_zero_trust_tunnel_cloudflared.api[0].id, null)

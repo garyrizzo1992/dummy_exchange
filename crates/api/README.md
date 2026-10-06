@@ -41,6 +41,7 @@ starting it. Do not include `.env` files or secrets in the image.
 | `DATABASE_URL` | Yes | Not set | PostgreSQL connection string. |
 | `JWT_SECRET` | Yes | Development fallback only | Strong shared JWT signing secret; supply it securely. |
 | `API_BIND` | No | `127.0.0.1:3000` | Bind address and port. |
+| `CORS_ALLOWED_ORIGINS` | No | Empty | Comma-separated frontend origins permitted to make browser API requests. No paths, wildcards or cookies. |
 | `RUST_LOG` | No | Rust default | Filter JSON logs, for example `info,exchange_api=debug`. |
 
 For local development, the API loads `.env` from the project root. In

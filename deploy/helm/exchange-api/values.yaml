@@ -58,3 +58,4 @@ tracing:
     limits: {cpu: 250m, memory: 128Mi}
 
 trustCloudflare: false
+corsAllowedOrigins: []

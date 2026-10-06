@@ -1,5 +1,27 @@
 # Free Cloudflare access
 
+## Static frontend on Pages
+
+Development enables `cloudflare_pages_enabled` and uses frontend hostname
+`exchange.garyrizzo.dev`. Terraform owns the direct-upload project
+`dummy-exchange-dev-frontend`, its Pages domain, and the proxied DNS record.
+The frontend is served independently of the Kubernetes tunnel.
+
+The Cloudflare token needs Account > Cloudflare Pages > Edit in addition to
+its existing tunnel, DNS, and zone settings permissions. Keep the ignored local
+token file and GitHub `dev` environment `CLOUDFLARE_API_TOKEN` secret consistent.
+
+The application workflow builds the standalone artifact and uploads it with
+Wrangler on trusted main revisions after tests pass. It waits for the project
+so the first infrastructure and application runs can start together. Pull
+requests build without deploying. Terraform manages configuration; uploaded
+site files and deployment history are managed by CI.
+
+The API chart permits CORS from the custom frontend domain and production
+Pages domain. The old API-served `/v1/ui/` route remains available.
+
+## Private API and services
+
 This environment uses Free-plan DNS, HTTPS redirect and Tunnel. It provisions
 no paid Cloudflare features or public OCI load balancer. Existing OCI compute,
 NAT and other infrastructure retain their existing billing.

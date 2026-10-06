@@ -17,6 +17,7 @@ on:
       - compose.yaml
       - scripts/check-helm.py
       - scripts/build-frontend.py
+      - scripts/wait-pages-project.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
       - compose.kafka.yaml
@@ -34,6 +35,7 @@ on:
       - compose.yaml
       - scripts/check-helm.py
       - scripts/build-frontend.py
+      - scripts/wait-pages-project.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
       - compose.kafka.yaml
@@ -71,6 +73,39 @@ jobs:
           name: exchange-frontend-static
           path: target/frontend-static/
           if-no-files-found: error
+
+  deploy-frontend:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [frontend-artifact, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: dev
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '81ff770ff712c1f376f115fbacc80f5e'
+      PAGES_PROJECT: dummy-exchange-dev-frontend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: exchange-frontend-static
+          path: target/frontend-static/
+      - name: Wait for the Terraform-managed Pages project
+        run: python3 scripts/wait-pages-project.py
+      - name: Check that the frontend release still matches main
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          git diff --exit-code "$SOURCE_SHA" origin/main -- Cargo.toml Cargo.lock crates/frontend scripts/build-frontend.py .github/workflows/application.yml
+      - name: Deploy the static frontend
+        run: npx --yes wrangler@4.147.0 pages deploy target/frontend-static --project-name "$PAGES_PROJECT" --branch main --commit-hash "$GITHUB_SHA"
 
   # Check the Rust code and Helm chart before building images.
   test:

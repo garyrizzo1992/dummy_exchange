@@ -13,6 +13,10 @@ mock_provider "http" {
 }
 mock_provider "ansible" {}
 mock_provider "cloudflare" {
+  mock_resource "cloudflare_pages_project" {
+    override_during = plan
+    defaults        = { subdomain = "dummy-exchange-test-frontend.pages.dev" }
+  }
   mock_resource "cloudflare_zero_trust_tunnel_cloudflared" {
     override_during = plan
     defaults        = { id = "01234567-89ab-cdef-0123-456789abcdef" }
@@ -33,8 +37,32 @@ variables {
 run "private_cluster_without_cloudflare" {
   command = plan
   assert {
+    condition     = length(cloudflare_pages_project.frontend) == 0 && length(cloudflare_pages_domain.frontend) == 0 && length(cloudflare_dns_record.frontend) == 0
+    error_message = "Pages must remain opt-in."
+  }
+  assert {
     condition     = length(cloudflare_dns_record.api) == 0 && length(cloudflare_zero_trust_tunnel_cloudflared.api) == 0
     error_message = "Cloudflare is opt-in and must not expose an unconfigured cluster."
+  }
+}
+
+run "static_frontend_pages" {
+  command = plan
+  variables {
+    cloudflare_enabled       = true
+    cloudflare_pages_enabled = true
+  }
+  assert {
+    condition     = cloudflare_pages_project.frontend[0].name == "dummy-exchange-test-frontend" && cloudflare_pages_project.frontend[0].production_branch == "main" && cloudflare_pages_project.frontend[0].source == null
+    error_message = "Pages must use a direct-upload project owned by CI."
+  }
+  assert {
+    condition     = cloudflare_dns_record.frontend[0].content == "dummy-exchange-test-frontend.pages.dev" && cloudflare_dns_record.frontend[0].proxied && cloudflare_pages_domain.frontend[0].name == var.frontend_hostname
+    error_message = "The frontend must resolve to Pages rather than the Kubernetes tunnel."
+  }
+  assert {
+    condition     = output.frontend_url == "https://exchange.garyrizzo.dev"
+    error_message = "Export the custom frontend URL."
   }
 }
 

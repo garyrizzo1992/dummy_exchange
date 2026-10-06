@@ -1,6 +1,8 @@
 # Exchange frontend
 
-The Rust/Leptos client is served by the API at `/v1/ui/`, using the same origin for authentication and market requests. Dev URL: https://api.garyrizzo.dev/v1/ui/.
+The Rust/Leptos client is hosted on Cloudflare Pages at https://exchange.garyrizzo.dev
+and calls https://api.garyrizzo.dev/v1. The API also serves its bundled frontend at
+`/v1/ui/` for same-origin use.
 
 The API Docker build compiles this crate to WebAssembly and packages wasm-bindgen assets.
 
@@ -20,14 +22,21 @@ with a static web server. Omit `--api-origin` when an API or reverse proxy serve
 change it. The existing API Docker build continues using same-origin requests.
 
 The application workflow uploads `exchange-frontend-static` as a separate GitHub
-Actions artifact. It does not deploy to Cloudflare. Before hosting the artifact
-on a different origin, configure the API's CORS policy for that frontend origin,
-including JSON and Authorization headers and OPTIONS preflight requests.
+Actions artifact. On trusted main builds, the deployment job waits for the
+Terraform-managed project and uploads the artifact using Wrangler. Pull requests
+build artifacts without deploying. The API's development CORS policy allows the
+custom frontend origin and production Pages origin, including JSON and bearer
+Authorization headers and OPTIONS preflight requests. Preview origins are not
+allowed automatically.
 
 Cloudflare Pages projects and custom domains can be managed by Terraform using
 `cloudflare_pages_project` and `cloudflare_pages_domain`, plus a DNS record.
 Build and upload the site separately in CI using Wrangler; Terraform manages
-the hosting configuration, while CI deploys the static files.
+the hosting configuration, while CI deploys the static files. Development uses
+project `dummy-exchange-dev-frontend`. The Cloudflare API token must include
+Account > Cloudflare Pages > Edit alongside the existing tunnel/DNS permissions.
+The generated `_headers` file allows API connections in the content security
+policy and asks browsers to revalidate assets between releases.
 
 ## Local API hosting
 

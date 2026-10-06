@@ -1,3 +1,4 @@
+mod cors;
 mod security;
 
 // HTTP endpoints for users, orders, balances and market data.
@@ -108,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
         .layer(middleware::from_fn(track_request_metrics))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .layer(cors::layer(
+            &env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default(),
+        )?);
     let bind = env::var("API_BIND").unwrap_or_else(|_| "127.0.0.1:3000".into());
     let listener = tokio::net::TcpListener::bind(bind).await?;
     axum::serve(

@@ -6,7 +6,7 @@
 
 | Service | URL |
 | --- | --- |
-| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange UI | [https://exchange.garyrizzo.dev](https://exchange.garyrizzo.dev) |
 | Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
 | Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
 | Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |

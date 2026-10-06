@@ -37,7 +37,7 @@ allow tunnel and DNS management. Configure `CLOUDFLARE_API_TOKEN` in the GitHub
 
 | Service | URL |
 | --- | --- |
-| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange UI | [https://exchange.garyrizzo.dev](https://exchange.garyrizzo.dev) |
 | Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
 | Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
 | Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
@@ -64,6 +64,7 @@ they do not define execution order. Terraform resolves resource dependencies.
 | `iam.tf` | Dynamic groups and instance-principal policies |
 | `vault.tf` | Application vault and encryption key |
 | `cloudflare.tf` | Free Cloudflare Tunnel, DNS, and HTTPS redirect |
+| `pages.tf` | Static frontend Pages project, custom domain, and DNS |
 | `bootstrap.tf` | Ansible action and configuration change triggers |
 | `migrations.tf` | Historical state address migrations |
 
