@@ -17,7 +17,7 @@ A DevOps/SRE portfolio project using a simulated crypto exchange as the workload
 - [Security review](docs/security-review.md): bounded attack checks and findings; [follow-ups](docs/security-follow-up.md) track rollout verification and remaining work.
 - [Traffic diagrams](deploy/traffic.md): public routing, private trading, observability and deployment flows.
 
-The demo runs on a two-node development cluster with node-local storage. Security rollout verification is in progress; internal PostgreSQL/Kafka TLS, platform-image findings and an application rollback rehearsal remain open.
+The demo runs on a two-node development cluster with node-local storage. The security configuration rollout is verified: all seven Argo CD applications are synced and healthy.
 
 Explore the [exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
 
