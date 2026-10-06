@@ -2,7 +2,7 @@
 Start the three brokers using compose.kafka.yaml (project exchange-kafka-verification),
 migrate the disposable database and build native binaries before running.
 """
-import json, os, subprocess, tempfile, time, uuid
+import json, os, subprocess, sys, tempfile, time, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,8 +94,9 @@ try:
     assert sql("SELECT count(*) FROM accounts WHERE available<0 OR reserved<0")=='0'
     print('Passed: three-broker durable delivery, duplicate/replayed orders, account identity validation, poison messages, ordered cancellation/refund, trace context and trader producer consumption.')
 finally:
+    failed = sys.exc_info()[0] is not None
     for proc,log in reversed(processes):
         if proc.poll() is None:proc.terminate();proc.wait()
         log.seek(0)
-        if proc.returncode not in (-15,0):print(log.read()[-3000:])
+        if failed or proc.returncode not in (-15,0):print(log.read()[-6000:])
         log.close()
