@@ -71,6 +71,17 @@ try:
     wait("SELECT available FROM accounts WHERE user_id='"+user+"' AND currency='USD'",'1000.0000000000')
     assert sql("SELECT count(*) FROM orders WHERE user_id='"+user+"'")=='1'
     assert sql("SELECT count(*) FROM orders WHERE user_id='"+user+"' AND trace_context ? 'traceparent'")=='1'
+    # Old commands cannot spend the fresh balance after a bot reset rotates IDs.
+    fresh=str(uuid.uuid4())
+    sql("INSERT INTO users(id,email,password_hash) VALUES('"+fresh+"','reset-"+fresh+"@example.com','disabled');"
+        "INSERT INTO accounts(user_id,currency,available) VALUES('"+fresh+"','USD',1000),('"+fresh+"','BTC',1);"
+        "UPDATE simulated_traders SET user_id='"+fresh+"' WHERE trader_key='"+identity+"'")
+    stale=dict(place,order=dict(order,client_order_id=str(uuid.uuid4())))
+    valid=dict(stale,user_id=fresh,order=dict(order,client_order_id=str(uuid.uuid4())))
+    publish([stale,valid])
+    wait("SELECT count(*) FROM orders WHERE user_id='"+fresh+"'",'1')
+    assert sql("SELECT count(*) FROM orders WHERE user_id='"+user+"'")=='1'
+    assert sql("SELECT available FROM accounts WHERE user_id='"+fresh+"' AND currency='USD'")=='999.0000000000'
     trader_id='kafka-producer-'+str(uuid.uuid4())
     trader=start('exchange-simulator',('trader',),{'TRADER_ID':trader_id,
         'SIMULATOR_METRICS_BIND':'127.0.0.1:23013','TRADER_INTERVAL_MS':'200'})

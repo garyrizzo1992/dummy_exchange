@@ -20,6 +20,8 @@ on:
       - scripts/wait-pages-project.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
+      - scripts/verify-market-generator.py
+      - scripts/reset-bots.sql
       - compose.kafka.yaml
       - scripts/requirements-helm.txt
       - .github/workflows/application.yml
@@ -38,6 +40,8 @@ on:
       - scripts/wait-pages-project.py
       - scripts/verify-exchange.py
       - scripts/verify-kafka.py
+      - scripts/verify-market-generator.py
+      - scripts/reset-bots.sql
       - compose.kafka.yaml
       - scripts/requirements-helm.txt
       # The bot updates this file after publishing. Don't start another build.
@@ -139,6 +143,7 @@ jobs:
           cargo build --workspace --locked
           PGHOST=127.0.0.1 PGPORT=25432 PGUSER=postgres PGDATABASE=dummy_exchange PGPASSWORD=test-only-private-password PGSSLMODE=disable target/debug/exchange-api migrate
           python scripts/verify-exchange.py
+          python scripts/verify-market-generator.py
           docker compose -p exchange-kafka-verification -f compose.yaml -f compose.kafka.yaml up -d kafka1 kafka2 kafka3 kafka-init
           python scripts/verify-kafka.py
       - name: Clean up disposable integration services

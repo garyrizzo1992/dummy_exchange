@@ -1,3 +1,4 @@
+mod generator;
 mod load;
 mod prices;
 mod trader;
@@ -6,10 +7,9 @@ mod trader;
 
 use axum::{Router, extract::State, routing::get};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use rand::{Rng, SeedableRng, rngs::StdRng};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sqlx::{PgPool, Row};
+use sqlx::{Connection, PgPool, Row};
 use std::env;
 use tokio::time::{Duration, sleep};
 use tracing::{info, warn};
@@ -35,7 +35,8 @@ async fn main() -> anyhow::Result<()> {
         match env::args().nth(1).as_deref() {
             Some("trader") => trader::run().await,
             Some("load-controller") => load::run().await,
-            _ => run_market().await,
+            Some("generate-once") => run_market(true).await,
+            _ => run_market(false).await,
         }
     };
     tokio::select! {
@@ -44,12 +45,19 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-async fn run_market() -> anyhow::Result<()> {
+async fn run_market(once: bool) -> anyhow::Result<()> {
     // `?` returns an error from this function if loading the URL or connecting fails.
     let db = PgPool::connect_with(exchange_config::database::connection_options()?).await?;
     let seed_text = env::var("SIMULATION_SEED").unwrap_or_else(|_| "42".to_string());
-    let seed = seed_text.parse().unwrap_or(42);
-    let mut rng = StdRng::seed_from_u64(seed);
+    let seed = seed_text.parse::<u64>()?;
+    // Keep this session alive for the full generator lifetime. Losing it stops
+    // writes; another replica can then claim ownership without duplicate ticks.
+    let mut owner = db.acquire().await?;
+    let locked: bool =
+        sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended('market-generator',0))")
+            .fetch_one(&mut *owner)
+            .await?;
+    anyhow::ensure!(locked, "market generator already has an active owner");
     let source = env::var("PRICE_SOURCE").unwrap_or_else(|_| "simulated".into());
     anyhow::ensure!(
         ["simulated", "coinbase"].contains(&source.as_str()),
@@ -74,7 +82,12 @@ async fn run_market() -> anyhow::Result<()> {
         sqlx::query("UPDATE orders SET status='cancelled' WHERE is_system=true AND status IN ('open','partially_filled')").execute(&db).await?;
     }
     loop {
-        if let Err(error) = tick(&db, &mut rng, live.as_ref(), liquidity).await {
+        owner.ping().await?;
+        let result = tick(&db, seed, live.as_ref(), liquidity).await;
+        if once {
+            return result;
+        }
+        if let Err(error) = result {
             metrics::counter!("market_simulator_errors_total").increment(1);
             warn!(%error, "simulation tick failed");
             metrics::counter!("market_price_feed_errors_total").increment(1);
@@ -120,36 +133,49 @@ async fn bootstrap_market_maker(db: &PgPool) -> anyhow::Result<()> {
 
 async fn tick(
     db: &PgPool,
-    rng: &mut StdRng,
+    seed: u64,
     live: Option<&reqwest::Client>,
     liquidity: Decimal,
 ) -> anyhow::Result<()> {
-    let states =
-        sqlx::query("SELECT instrument,reference_price FROM market_state ORDER BY instrument")
-            .fetch_all(db)
-            .await?;
-    let mut quotes = Vec::new();
+    // Fetch external data only for the explicitly selected live-feed mode.
+    let mut live_quotes = std::collections::HashMap::new();
+    if let Some(client) = live {
+        let symbols = sqlx::query_scalar::<_, String>(
+            "SELECT instrument FROM market_state ORDER BY instrument",
+        )
+        .fetch_all(db)
+        .await?;
+        for symbol in symbols {
+            live_quotes.insert(symbol.clone(), prices::fetch(client, &symbol).await?);
+        }
+    }
+    let mut tx = db.begin().await?;
+    let states = sqlx::query("SELECT instrument,reference_price,generator_anchor_price,generator_seed,generator_step FROM market_state ORDER BY instrument FOR UPDATE")
+        .fetch_all(&mut *tx).await?;
     for state in states {
         let symbol: String = state.get("instrument");
-        let current_price: Decimal = state.get("reference_price");
-        let (next_price, change, source_time) = if let Some(client) = live {
-            let quote = prices::fetch(client, &symbol).await?;
+        let current: Decimal = state.get("reference_price");
+        let anchor = state
+            .get::<Option<Decimal>, _>("generator_anchor_price")
+            .unwrap_or(current);
+        let saved_seed = state
+            .get::<Option<i64>, _>("generator_seed")
+            .unwrap_or_else(|| generator::market_seed(seed, &symbol));
+        let step: i64 = state.get("generator_step");
+        let (next_price, change, source_time) = if let Some(quote) = live_quotes.remove(&symbol) {
             (quote.0, quote.1, Some(quote.2))
         } else {
-            let change = Decimal::new(rng.random_range(-35_i64..=35), 4);
+            let price = generator::next_price(current, anchor, saved_seed, step);
             (
-                (current_price * (Decimal::ONE + change))
-                    .round_dp(2)
-                    .max(Decimal::new(1, 2)),
-                change * Decimal::from(100),
+                price,
+                (price - current) / current * Decimal::from(100),
                 None,
             )
         };
-        quotes.push((symbol, next_price, change, source_time));
-    }
-    // Publish all markets, liquidity and transition baselines atomically.
-    let mut tx = db.begin().await?;
-    for (symbol, next_price, change, source_time) in quotes {
+        if live.is_none() {
+            sqlx::query("UPDATE market_state SET generator_anchor_price=$2,generator_seed=$3,generator_step=generator_step+1 WHERE instrument=$1")
+                .bind(&symbol).bind(anchor).bind(saved_seed).execute(&mut *tx).await?;
+        }
         metrics::counter!("market_simulator_updates_total", "instrument" => symbol.clone())
             .increment(1);
         metrics::gauge!("market_reference_price", "instrument" => symbol.clone())

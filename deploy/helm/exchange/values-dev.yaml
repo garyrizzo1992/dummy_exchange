@@ -12,6 +12,6 @@ traders:
   autoscaling:
     enabled: true
     maxReplicas: 8
-priceSource: coinbase
+priceSource: simulated
 kafka:
   enabled: true
