@@ -1,6 +1,6 @@
 # Architecture review
 
-Reviewed on 2026-10-05. This is a working review to support the portfolio write-up; the root README remains an outline for the author.
+Reviewed on 2026-10-05. This is a working review to support the portfolio write-up. The [operations notes](operations.md) record later incidents, recovery checks and remaining gaps.
 
 ## Design worth explaining
 

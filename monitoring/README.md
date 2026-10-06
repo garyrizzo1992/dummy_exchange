@@ -76,3 +76,5 @@ Grafana previously exceeded its 256 MiB limit and repeatedly restarted with
 limits are now 1 GiB memory and two CPU cores, with requests of 512 MiB and 250m.
 A startup probe allows initialization before readiness checks. Provisioned dashboards
 remain in Git; notification destinations still require explicit configuration.
+
+See the [operations notes](../docs/operations.md) for incident examples, proposed reliability targets and runbooks.

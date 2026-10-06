@@ -1,25 +1,22 @@
 # Dummy Exchange
 
-A simulated crypto exchange built to practise backend engineering, cloud infrastructure and running services in production. Bots trade against generated prices, with balances and market history stored in PostgreSQL.
+A DevOps/SRE portfolio project using a simulated crypto exchange as the workload. The focus is repeatable setup, automated deployments and fixing real operational problems.
 
-- **Rust / WebAssembly:** Fast services and a browser frontend in one language.
-- **PostgreSQL:** Keeps balances, trades and generated prices across restarts.
-- **Kafka:** Queues trade commands for workers to process.
-- **OCI / Kubernetes:** Hosts services and scales the trading bots.
-- **Terraform / Ansible:** Makes infrastructure and server setup repeatable.
-- **GitHub Actions / Helm / Argo CD:** Tests, packages and deploys changes automatically.
-- **Cloudflare:** Static hosting, private service routing and access control.
-- **Prometheus / Grafana / Loki / OpenTelemetry:** Helps track performance and investigate problems.
+- **Infrastructure:** Terraform provisions OCI and Cloudflare; Ansible bootstraps Kubernetes. Scheduled drift checks flag changes.
+- **Delivery:** GitHub Actions tests Rust services and builds images pinned by digest; Helm and Argo CD deploy them with migrations first.
+- **Cloudflare:** Pages hosts the frontend; Tunnel reaches private services without public node IPs; Access adds email login for Prometheus.
+- **Operations:** Prometheus and Grafana track health and capacity; Loki and OpenTelemetry help investigate failures.
+- **Workload:** PostgreSQL stores balances and market state; Kafka feeds trading workers, with KEDA scaling bots and consumers.
 
-Explore the [live exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
+## What this shows
 
-## Cloudflare setup
+- [Incidents and capacity](docs/operations.md#incidents-and-capacity): DNF memory pressure, workload limits and lighter traders.
+- [Recovery checks and runbooks](docs/operations.md#recovery-checks): restart persistence, command replay and deployment troubleshooting.
+- [Reliability targets and remaining gaps](docs/operations.md#reliability-targets): proposed SLOs, backup restoration and alert delivery.
+- [Traffic diagrams](deploy/traffic.md): public routing, private trading, observability and deployment flows.
 
-- **Pages:** The frontend ships as a separate static artifact, uploaded by GitHub Actions to `exchange.garyrizzo.dev`.
-- **Tunnel:** Two connectors route the API and dashboards into private Kubernetes services, without a public load balancer or public node IPs. API routing only exposes `/v1/*`.
-- **Access:** Prometheus requires an email code and an approved email address before requests reach the cluster.
-- **Terraform:** Manages the Pages project, custom domain, DNS, tunnel routes, Access policies and HTTPS redirects.
+The demo runs on a two-node development cluster with node-local storage.
 
-See the [traffic diagrams](deploy/traffic.md) for request routing, trading, monitoring and deployments.
+Explore the [exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
 
-Deployment details are in [deploy](deploy/README.md), [Terraform](provisioning/terraform/README.md) and [Ansible](provisioning/ansible/README.md).
+Setup: [deployment](deploy/README.md), [Terraform](provisioning/terraform/README.md), [Ansible](provisioning/ansible/README.md).

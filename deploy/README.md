@@ -10,7 +10,7 @@ one sync, with a shared migration hook before their Deployments. See the
 
 | Service | URL |
 | --- | --- |
-| Exchange UI | [https://api.garyrizzo.dev/v1/ui/](https://api.garyrizzo.dev/v1/ui/) |
+| Exchange UI | [https://exchange.garyrizzo.dev](https://exchange.garyrizzo.dev) |
 | Exchange API | [https://api.garyrizzo.dev/v1](https://api.garyrizzo.dev/v1) |
 | Grafana | [https://grafana.garyrizzo.dev](https://grafana.garyrizzo.dev) |
 | Argo CD | [https://argocd.garyrizzo.dev](https://argocd.garyrizzo.dev) |
@@ -22,6 +22,10 @@ set up Argo CD and External Secrets. OCI Vault stores the PostgreSQL password,
 JWT secret and Grafana password. Git contains only their identifiers. Services
 use private ClusterIPs. See the [infrastructure guide](../provisioning/terraform/README.md)
 for setup and the [architecture review](../docs/architecture-review.md) for storage limits.
+
+Operational incidents, recovery checks and runbooks are documented in the
+[operations notes](../docs/operations.md). See the [traffic diagrams](traffic.md)
+for request and deployment paths.
 
 The public API uses `api.garyrizzo.dev` through a free Cloudflare Tunnel and
 direct routing to the private API Service. DNS and tunnel routing belong to Terraform. See
