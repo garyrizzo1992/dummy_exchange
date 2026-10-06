@@ -2,7 +2,7 @@
 imageRegistry: docker.io/garyrizzo1992
 image:
   tag: main
-  digest: sha256:6a9f1ce5306bbe3469e209a80a2cc48a029c40c76a19094b5ad60aefe8635865
+  digest: sha256:a19bcbd036df0f57b271198532d52351093ff64885c1eb2e0eec748abe206c4e
 tracing:
   enabled: true
 kafka:
