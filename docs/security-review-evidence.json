@@ -1,0 +1,294 @@
+{
+  "date": "2026-10-06",
+  "reviewed_commit": "1b36b76",
+  "public_checks": [
+    {
+      "test": "frontend",
+      "status": 200,
+      "headers": {
+        "x-frame-options": "DENY",
+        "access-control-allow-origin": "*",
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https://api.garyrizzo.dev; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff"
+      }
+    },
+    {
+      "test": "https redirect",
+      "status": 301,
+      "headers": {}
+    },
+    {
+      "test": "public market",
+      "status": 200,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "private route /metrics",
+      "status": 404,
+      "headers": {}
+    },
+    {
+      "test": "private route /healthz",
+      "status": 404,
+      "headers": {}
+    },
+    {
+      "test": "private route /readyz",
+      "status": 404,
+      "headers": {}
+    },
+    {
+      "test": "private route /.env",
+      "status": 404,
+      "headers": {}
+    },
+    {
+      "test": "private route /v1/ui/pkg/../../../../etc/passwd",
+      "status": 400,
+      "headers": {}
+    },
+    {
+      "test": "unauth /v1/accounts/balances",
+      "status": 401,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "unauth /v1/orders",
+      "status": 401,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "unauth /v1/fills",
+      "status": 401,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "unsigned JWT",
+      "status": 401,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "CORS https://exchange.garyrizzo.dev",
+      "status": 200,
+      "headers": {
+        "access-control-allow-origin": "https://exchange.garyrizzo.dev"
+      }
+    },
+    {
+      "test": "CORS https://attacker.example",
+      "status": 200,
+      "headers": {}
+    },
+    {
+      "test": "CORS https://exchange.garyrizzo.dev.attacker.example",
+      "status": 200,
+      "headers": {}
+    },
+    {
+      "test": "CORS null",
+      "status": 200,
+      "headers": {}
+    },
+    {
+      "test": "weak registration",
+      "status": 400,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "SQL login input",
+      "status": 400,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "oversized input",
+      "status": 413,
+      "headers": {
+        "content-security-policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "DENY"
+      }
+    },
+    {
+      "test": "Prometheus auth",
+      "status": 302,
+      "headers": {
+        "access-control-allow-credentials": "true"
+      }
+    },
+    {
+      "test": "Grafana search auth",
+      "status": 401,
+      "headers": {
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "deny"
+      }
+    },
+    {
+      "test": "Argo apps auth",
+      "status": 401,
+      "headers": {}
+    },
+    {
+      "test": "Argo settings public",
+      "status": 200,
+      "headers": {}
+    }
+  ],
+  "disposable_fixture": [
+    {
+      "test": "cross-account order access",
+      "result": "PASS",
+      "foreign_cancel": 404
+    },
+    {
+      "test": "expired",
+      "result": "PASS",
+      "status": 401
+    },
+    {
+      "test": "string expiration",
+      "result": "PASS",
+      "status": 401
+    },
+    {
+      "test": "missing expiration",
+      "result": "PASS",
+      "status": 401
+    },
+    {
+      "test": "wrong signature",
+      "result": "PASS",
+      "status": 401
+    },
+    {
+      "test": "wrong algorithm",
+      "result": "PASS",
+      "status": 401
+    },
+    {
+      "test": "SQL injection login",
+      "result": "PASS"
+    },
+    {
+      "test": "negative zero overflowing order input",
+      "result": "PASS"
+    },
+    {
+      "test": "database lateral TCP",
+      "reachable": true
+    },
+    {
+      "test": "API lateral HTTP",
+      "reachable": true
+    },
+    {
+      "test": "Kafka anonymous TCP",
+      "reachable": false
+    }
+  ],
+  "tls_handshakes": [
+    {
+      "requested": "TLSv1",
+      "accepted": true,
+      "negotiated": "TLSv1"
+    },
+    {
+      "requested": "TLSv1_1",
+      "accepted": true,
+      "negotiated": "TLSv1.1"
+    },
+    {
+      "requested": "TLSv1_2",
+      "accepted": true,
+      "negotiated": "TLSv1.2"
+    }
+  ],
+  "rust_osv": {
+    "packages": 427,
+    "findings": [
+      [
+        "jsonwebtoken",
+        "9.3.1",
+        [
+          "GHSA-h395-gr6q-cpjc"
+        ]
+      ],
+      [
+        "opentelemetry_sdk",
+        "0.31.0",
+        [
+          "GHSA-w9wp-h8wv-79jx"
+        ]
+      ],
+      [
+        "paste",
+        "1.0.15",
+        [
+          "RUSTSEC-2024-0436"
+        ]
+      ],
+      [
+        "proc-macro-error2",
+        "2.0.1",
+        [
+          "RUSTSEC-2026-0173"
+        ]
+      ],
+      [
+        "rsa",
+        "0.9.10",
+        [
+          "RUSTSEC-2023-0071"
+        ]
+      ]
+    ]
+  },
+  "gitleaks": {
+    "version": "8.30.1",
+    "commits_scanned": 101,
+    "findings": 0
+  },
+  "configuration_checks": {
+    "database_role": "postgres",
+    "database_superuser": true,
+    "postgres_tls": false,
+    "password_encryption": "scram-sha-256",
+    "default_service_account_can_read_secrets": false,
+    "application_service_accounts_automount_tokens": true,
+    "privileged_pod_server_dry_run_admitted": true,
+    "main_requires_pull_request_review": false,
+    "main_requires_status_checks": false,
+    "github_actions_sha_pinning_required": false,
+    "cloudflare_min_tls": "1.0",
+    "hsts_enabled": false,
+    "disposable_resources_cleaned_up": true
+  }
+}

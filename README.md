@@ -13,6 +13,7 @@ A DevOps/SRE portfolio project using a simulated crypto exchange as the workload
 - [Incidents and capacity](docs/operations.md#incidents-and-capacity): DNF memory pressure, workload limits and lighter traders.
 - [Recovery checks and runbooks](docs/operations.md#recovery-checks): restart persistence, command replay and deployment troubleshooting.
 - [Reliability targets and remaining gaps](docs/operations.md#reliability-targets): proposed SLOs, backup restoration and alert delivery.
+- [Security review](docs/security-review.md): ten attack areas tested, deployed versions and fixes still needed.
 - [Traffic diagrams](deploy/traffic.md): public routing, private trading, observability and deployment flows.
 
 The demo runs on a two-node development cluster with node-local storage.
@@ -20,3 +21,5 @@ The demo runs on a two-node development cluster with node-local storage.
 Explore the [exchange](https://exchange.garyrizzo.dev), [API](https://api.garyrizzo.dev/v1/instruments), [Grafana](https://grafana.garyrizzo.dev), [Argo CD](https://argocd.garyrizzo.dev) or [Prometheus](https://prometheus.garyrizzo.dev).
 
 Setup: [deployment](deploy/README.md), [Terraform](provisioning/terraform/README.md), [Ansible](provisioning/ansible/README.md).
+
+AI tools helped with code, infrastructure, troubleshooting and documentation. The project records the checks performed and the work still to do.
