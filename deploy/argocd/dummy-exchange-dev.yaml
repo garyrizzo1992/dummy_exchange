@@ -50,7 +50,7 @@ spec:
       valuesObject:
         extraEnv:
         - name: DATABASE_URL
-          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
+          value: postgresql://exchange_app:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
   - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
     targetRevision: main
     path: deploy/helm/exchange-worker
@@ -62,7 +62,7 @@ spec:
       valuesObject:
         extraEnv:
         - name: DATABASE_URL
-          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
+          value: postgresql://exchange_app:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
   - repoURL: https://github.com/garyrizzo1992/dummy_exchange.git
     targetRevision: main
     path: deploy/helm/exchange
@@ -74,4 +74,4 @@ spec:
       valuesObject:
         extraEnv:
         - name: DATABASE_URL
-          value: postgresql://postgres:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
+          value: postgresql://exchange_app:$(PGPASSWORD)@dummy-exchange-dev-dummy-exchange-postgres:5432/dummy_exchange?sslmode=disable
